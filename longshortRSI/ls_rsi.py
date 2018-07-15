@@ -20,8 +20,9 @@ from gm.api import *
 import os
 from configparser import ConfigParser
 import logging
-import talib
+import numpy as np
 
+from utils import HiDeviationFinder
 from utils.ths_rsi import THS_RSI
 
 logger = logging.getLogger()
@@ -32,20 +33,29 @@ cfg.read('%s/ls_rsi.ini' % this_dir)
 my_symbols = str(cfg.get('default', 'my_symbols'))
 short_time_bar = str(cfg.get('default', 'short_time'))
 long_time_bar = str(cfg.get('default', 'long_time'))
-short_rsi = int(cfg.get('default', 'short_rsi'))
-long_rsi = int(cfg.get("default", 'long_rsi'))
+short_rsi_peroid = int(cfg.get('default', 'short_rsi_period'))
+long_rsi_period = int(cfg.get("default", 'long_rsi_period'))
 data_window = int(cfg.get("default", 'data_window'))
+
+LONG_RSI_BUY_THRESHOLD = int(cfg.get("default", 'long_rsi_buy_threshold'))
+SHORT_RSI_BUY_THRESHOLD = int(cfg.get("default", 'short_rsi_buy_threshold'))
+SHORT_RSI_SELL_THRESHOLD = int(cfg.get("default", 'short_rsi_sell_threshold'))
+MA_PRICE_PERIOD = int(cfg.get("default", 'ma_price_period'))
+PRICE_MA_THRESHOLD = float(cfg.get("default", 'price_ma_threshold'))
+RISK_PERIOD = int(cfg.get("default", 'risk_period'))
 
 
 def init(context):
     context.SYMBOLS = my_symbols
-    context.SHORT_RSI_PERIOD = short_rsi
-    context.LONG_RSI_PERIOD = long_rsi
+    context.SHORT_RSI_PERIOD = short_rsi_peroid
+    context.LONG_RSI_PERIOD = long_rsi_period
     context.SHORT_FREQUENCY = short_time_bar
     context.LONG_FREQUENCY = long_time_bar
     context.WINDOW = data_window
     context.long_rsi_compute = None
     context.short_rsi_compute = None
+    context.risk_rsi_compute = None  # 使用长周期作为风控
+    context.watch_buy = False
 
     subscribe(symbols=context.SYMBOLS, frequency=context.SHORT_FREQUENCY, count=context.WINDOW)
     subscribe(symbols=context.SYMBOLS, frequency=context.LONG_FREQUENCY, count=context.WINDOW)
@@ -65,13 +75,19 @@ def on_bar(context, bars):
             sma_diff_gt0, sma_diff_abs, rsi = THS_RSI.init_parames(close_price_arr.values.reshape(context.WINDOW),
                                                                    time_peroid=context.LONG_RSI_PERIOD)
             context.long_rsi_compute = THS_RSI(context.LONG_RSI_PERIOD, sma_diff_gt0, sma_diff_abs, rsi)
+
+            heigest_price = context.data(context.SYMBOLS, frquency, context.WINDOW, fields='high')
+            history_rsi = HiDeviationFinder.compute_history_rsi(close_price_arr, context.LONG_RSI_PERIOD)
+            hi_deviation_finder = HiDeviationFinder(RISK_PERIOD)
+            hi_deviation_finder.add(heigest_price, history_rsi)
+            context.hi_deviation_finder = hi_deviation_finder
         else:
             close_price_2 = close_price_arr[-2:].values.reshape(2)
             rsi = context.long_rsi_compute.ths_rsi(close_price_2)
-
-        print("%s\t%s" % (bars[0]['eob'], rsi))
-        # if rsi <= 20:
-        #     print("%s\t%s" % (bars[0]['eob'], rsi))
+            if rsi < LONG_RSI_BUY_THRESHOLD:
+                context.watch_buy = True
+            else:
+                context.watch_buy = False
 
     elif frquency == context.SHORT_FREQUENCY:
         close_price_arr = context.data(context.SYMBOLS, frquency, context.WINDOW, fields='close')
@@ -79,6 +95,22 @@ def on_bar(context, bars):
             sma_diff_gt0, sma_diff_abs, rsi = THS_RSI.init_parames(close_price_arr.values.reshape(context.WINDOW),
                                                                    time_peroid=context.SHORT_RSI_PERIOD)
             context.short_rsi_compute = THS_RSI(context.SHORT_RSI_PERIOD, sma_diff_gt0, sma_diff_abs, rsi)
+        else:
+            close_price_2 = close_price_arr[-2:].values.reshape(2)
+            rsi = context.short_rsi_compute.ths_rsi(close_price_2)
+            ma_price = round(np.mean(close_price_arr[-MA_PRICE_PERIOD:].values.reshape(MA_PRICE_PERIOD)), 2)
+            close_price = round(close_price_2[1], 2)
+            if rsi <= SHORT_RSI_BUY_THRESHOLD and context.watch_buy == True:  # 短期rsi小于阈值而且长周期发出买入信号
+                if close_price < ma_price * (1 - PRICE_MA_THRESHOLD):
+                    if not context.hi_deviation_finder.is_hi_deviation():
+                        print("%s买入\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
+                    else:
+                        print("%s顶背离拒绝买入\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
+                elif not context.hi_deviation_finder.is_hi_deviation():
+                    print("%s*买入\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
+
+            elif rsi > SHORT_RSI_SELL_THRESHOLD:
+                print("%s卖出\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
 
 
 if __name__ == '__main__':
@@ -87,7 +119,7 @@ if __name__ == '__main__':
         filename=this_file,
         mode=MODE_BACKTEST,
         token='5e18d749d600b7caa519c7caa4f09853aaa9deb2',
-        backtest_start_time='2018-07-01 09:30:00',
+        backtest_start_time='2018-06-01 09:30:00',
         backtest_end_time='2018-07-14 15:00:00',
         backtest_adjust=ADJUST_NONE,
         backtest_initial_cash=100000,
