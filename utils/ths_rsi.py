@@ -1,5 +1,6 @@
 from functools import reduce
 
+
 class THS_RSI(object):
     def __init__(self, time_peroid, sma_diff_gt0, sma_abs_diff, cur_rsi):
         self.__time_period = time_peroid
@@ -17,10 +18,10 @@ class THS_RSI(object):
         """
         cur_diff = close_price[1] - close_price[0]
         cur_abs_diff = abs(cur_diff)
-        self.__sma_gt0_diff = self.__SMA(self.__sma_gt0_diff, max(cur_diff,0), 1)
+        self.__sma_gt0_diff = self.__SMA(self.__sma_gt0_diff, max(cur_diff, 0), 1)
         self.__sma_abs_diff = self.__SMA(self.__sma_abs_diff, cur_abs_diff, 1)
 
-        self.__cur_rsi = round(((self.__sma_gt0_diff / self.__sma_abs_diff)*100),2)
+        self.__cur_rsi = round(((self.__sma_gt0_diff / self.__sma_abs_diff) * 100), 2)
 
         return self.__cur_rsi
 
@@ -32,7 +33,21 @@ class THS_RSI(object):
         :param time_period:
         :return:
         """
-        final_val = (pre_val * (self.__time_period - cur_val_weight) + cur_val * cur_val_weight) / self.__time_period
+
+        final_val = self.SMA(pre_val, cur_val, cur_val_weight, self.__time_period)
+        return final_val
+
+    @staticmethod
+    def SMA(pre_val, cur_val, cur_val_weight, time_period):
+        """
+        移动平均线计算
+        :param pre_val:
+        :param cur_val:
+        :param cur_val_weight:
+        :param time_period:
+        :return:
+        """
+        final_val = (pre_val * (time_period - cur_val_weight) + cur_val * cur_val_weight) / time_period
         return final_val
 
     @staticmethod
@@ -49,7 +64,7 @@ class THS_RSI(object):
 
         sma_diff_gt0 = reduce(lambda x, y: ((time_peroid - 1) * x + 1 * y) / time_peroid, diff_gt0)
         sma_diff_abs = reduce(lambda x, y: ((time_peroid - 1) * x + 1 * y) / time_peroid, diff_abs)
-        sma_rsi = (sma_diff_gt0 / sma_diff_abs)*100
+        sma_rsi = (sma_diff_gt0 / sma_diff_abs) * 100
 
         sma_diff_gt0 = round(sma_diff_gt0, 2)
         sma_diff_abs = round(sma_diff_abs, 2)

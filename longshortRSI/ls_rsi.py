@@ -22,7 +22,7 @@ from configparser import ConfigParser
 import logging
 import numpy as np
 
-from utils import HiDeviationFinder
+from utils.HiDeviationFinder import HiDeviationFinder
 from utils.ths_rsi import THS_RSI
 
 logger = logging.getLogger()
@@ -43,6 +43,7 @@ SHORT_RSI_SELL_THRESHOLD = int(cfg.get("default", 'short_rsi_sell_threshold'))
 MA_PRICE_PERIOD = int(cfg.get("default", 'ma_price_period'))
 PRICE_MA_THRESHOLD = float(cfg.get("default", 'price_ma_threshold'))
 RISK_PERIOD = int(cfg.get("default", 'risk_period'))
+DEVIATION_VALID_INTERVAL = 5
 
 
 def init(context):
@@ -71,19 +72,22 @@ def on_bar(context, bars):
     frquency = bars[0]['frequency']
     if frquency == context.LONG_FREQUENCY:
         close_price_arr = context.data(context.SYMBOLS, frquency, context.WINDOW, fields='close')
+        heigest_price = np.array(
+            context.data(context.SYMBOLS, frquency, context.WINDOW, fields='high').values.reshape(context.WINDOW))
         if context.long_rsi_compute == None:
             sma_diff_gt0, sma_diff_abs, rsi = THS_RSI.init_parames(close_price_arr.values.reshape(context.WINDOW),
                                                                    time_peroid=context.LONG_RSI_PERIOD)
             context.long_rsi_compute = THS_RSI(context.LONG_RSI_PERIOD, sma_diff_gt0, sma_diff_abs, rsi)
 
-            heigest_price = context.data(context.SYMBOLS, frquency, context.WINDOW, fields='high')
             history_rsi = HiDeviationFinder.compute_history_rsi(close_price_arr, context.LONG_RSI_PERIOD)
             hi_deviation_finder = HiDeviationFinder(RISK_PERIOD)
-            hi_deviation_finder.add(heigest_price, history_rsi)
+            hi_deviation_finder.add(heigest_price.tolist(), history_rsi)
             context.hi_deviation_finder = hi_deviation_finder
         else:
             close_price_2 = close_price_arr[-2:].values.reshape(2)
+            heigest_price_1 = bars[0]['high']
             rsi = context.long_rsi_compute.ths_rsi(close_price_2)
+            context.hi_deviation_finder.add([heigest_price_1], [rsi])
             if rsi < LONG_RSI_BUY_THRESHOLD:
                 context.watch_buy = True
             else:
@@ -91,7 +95,7 @@ def on_bar(context, bars):
 
     elif frquency == context.SHORT_FREQUENCY:
         close_price_arr = context.data(context.SYMBOLS, frquency, context.WINDOW, fields='close')
-        if context.short_rsi_compute == None:
+        if context.short_rsi_compute is None:
             sma_diff_gt0, sma_diff_abs, rsi = THS_RSI.init_parames(close_price_arr.values.reshape(context.WINDOW),
                                                                    time_peroid=context.SHORT_RSI_PERIOD)
             context.short_rsi_compute = THS_RSI(context.SHORT_RSI_PERIOD, sma_diff_gt0, sma_diff_abs, rsi)
@@ -102,11 +106,11 @@ def on_bar(context, bars):
             close_price = round(close_price_2[1], 2)
             if rsi <= SHORT_RSI_BUY_THRESHOLD and context.watch_buy == True:  # 短期rsi小于阈值而且长周期发出买入信号
                 if close_price < ma_price * (1 - PRICE_MA_THRESHOLD):
-                    if not context.hi_deviation_finder.is_hi_deviation():
+                    if not context.hi_deviation_finder.is_hi_deviation(DEVIATION_VALID_INTERVAL):
                         print("%s买入\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
                     else:
                         print("%s顶背离拒绝买入\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
-                elif not context.hi_deviation_finder.is_hi_deviation():
+                elif not context.hi_deviation_finder.is_hi_deviation(DEVIATION_VALID_INTERVAL):
                     print("%s*买入\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
 
             elif rsi > SHORT_RSI_SELL_THRESHOLD:
