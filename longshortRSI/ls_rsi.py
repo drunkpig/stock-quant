@@ -16,6 +16,9 @@
 
 # coding=utf-8
 from __future__ import print_function, absolute_import
+
+from logging.config import fileConfig
+
 from gm.api import *
 import os
 from configparser import ConfigParser
@@ -43,7 +46,7 @@ SHORT_RSI_SELL_THRESHOLD = int(cfg.get("default", 'short_rsi_sell_threshold'))
 MA_PRICE_PERIOD = int(cfg.get("default", 'ma_price_period'))
 PRICE_MA_THRESHOLD = float(cfg.get("default", 'price_ma_threshold'))
 RISK_PERIOD = int(cfg.get("default", 'risk_period'))
-DEVIATION_VALID_INTERVAL = 5
+DEVIATION_VALID_INTERVAL = 10
 
 
 def init(context):
@@ -57,6 +60,7 @@ def init(context):
     context.short_rsi_compute = None
     context.risk_rsi_compute = None  # 使用长周期作为风控
     context.watch_buy = False
+    context.debug_data = False
 
     subscribe(symbols=context.SYMBOLS, frequency=context.SHORT_FREQUENCY, count=context.WINDOW)
     subscribe(symbols=context.SYMBOLS, frequency=context.LONG_FREQUENCY, count=context.WINDOW)
@@ -74,20 +78,33 @@ def on_bar(context, bars):
         close_price_arr = context.data(context.SYMBOLS, frquency, context.WINDOW, fields='close')
         heigest_price = np.array(
             context.data(context.SYMBOLS, frquency, context.WINDOW, fields='high').values.reshape(context.WINDOW))
+
         if context.long_rsi_compute == None:
+            heigest_price_dt = np.array(
+                context.data(context.SYMBOLS, frquency, context.WINDOW, fields='eob').values.reshape(context.WINDOW))
+            heigest_price_dt = list(map(lambda x: str(x), heigest_price_dt))
             sma_diff_gt0, sma_diff_abs, rsi = THS_RSI.init_parames(close_price_arr.values.reshape(context.WINDOW),
                                                                    time_peroid=context.LONG_RSI_PERIOD)
             context.long_rsi_compute = THS_RSI(context.LONG_RSI_PERIOD, sma_diff_gt0, sma_diff_abs, rsi)
 
             history_rsi = HiDeviationFinder.compute_history_rsi(close_price_arr, context.LONG_RSI_PERIOD)
             hi_deviation_finder = HiDeviationFinder(RISK_PERIOD)
-            hi_deviation_finder.add(heigest_price.tolist(), history_rsi)
+            hi_deviation_finder.add(heigest_price.tolist(), history_rsi, heigest_price_dt)
             context.hi_deviation_finder = hi_deviation_finder
         else:
+            # date = '2018-06-15'
+            # watch_date = str(bars[0]['eob']).split(' ')[0]
+            # if date==watch_date:
+            #     context.debug_data=True
+            #
+            # dt2 = '2018-06-07 10:15:00'
+            # if str(bars[0]['eob'])==dt2:
+            #     print(bars[0]['high'])
+            #     exit(-1)
             close_price_2 = close_price_arr[-2:].values.reshape(2)
             heigest_price_1 = bars[0]['high']
             rsi = context.long_rsi_compute.ths_rsi(close_price_2)
-            context.hi_deviation_finder.add([heigest_price_1], [rsi])
+            context.hi_deviation_finder.add([heigest_price_1], [rsi], [str(bars[0]['eob'])])
             if rsi < LONG_RSI_BUY_THRESHOLD:
                 context.watch_buy = True
             else:
@@ -106,7 +123,7 @@ def on_bar(context, bars):
             close_price = round(close_price_2[1], 2)
             if rsi <= SHORT_RSI_BUY_THRESHOLD and context.watch_buy == True:  # 短期rsi小于阈值而且长周期发出买入信号
                 if close_price < ma_price * (1 - PRICE_MA_THRESHOLD):
-                    if not context.hi_deviation_finder.is_hi_deviation(DEVIATION_VALID_INTERVAL):
+                    if not context.hi_deviation_finder.is_hi_deviation(DEVIATION_VALID_INTERVAL, context.debug_data):
                         print("%s买入\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
                     else:
                         print("%s顶背离拒绝买入\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
@@ -119,6 +136,7 @@ def on_bar(context, bars):
 
 if __name__ == '__main__':
     print(__file__)
+    fileConfig('../logging.ini')
     run(strategy_id='eceb04b5-8732-11e8-9ab6-68f72885d744',
         filename=this_file,
         mode=MODE_BACKTEST,
