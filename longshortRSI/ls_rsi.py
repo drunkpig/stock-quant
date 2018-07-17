@@ -46,7 +46,7 @@ SHORT_RSI_SELL_THRESHOLD = int(cfg.get("default", 'short_rsi_sell_threshold'))
 MA_PRICE_PERIOD = int(cfg.get("default", 'ma_price_period'))
 PRICE_MA_THRESHOLD = float(cfg.get("default", 'price_ma_threshold'))
 RISK_PERIOD = int(cfg.get("default", 'risk_period'))
-DEVIATION_VALID_INTERVAL = 10
+DEVIATION_VALID_INTERVAL = 30  #一个背离管多远
 
 
 def init(context):
