@@ -10,14 +10,15 @@ logger = logging.getLogger()
 
 
 class HiDeviationFinder(object):
-    def __init__(self, cache_len):
+    def __init__(self, cache_len, valid_hi_price_interval, price_eq_endurance, rsi_eq_endurance, effective_deviation_distance):
         self.__cache_len = cache_len  # 保存多少个周期的数据
         self.__hi_price = []
         self.__rsi = []
         self.__dt = []
-        self.__valid_hi_price_interval = 5  # 有效最高价格必须要高于左侧和右侧多少个点
-        self.__price_equal_endurance = 0.01  # 判断高低点的误差
-        self.__rsi_equal_endurance = 0.005
+        self.__effective_deviation_distance = effective_deviation_distance
+        self.__valid_hi_price_interval = valid_hi_price_interval  # 有效最高价格必须要高于左侧和右侧多少个点
+        self.__price_equal_endurance = price_eq_endurance  # 判断高低点的误差
+        self.__rsi_equal_endurance = rsi_eq_endurance
 
     @staticmethod
     def compute_history_rsi(close_price, time_period):
@@ -111,7 +112,7 @@ class HiDeviationFinder(object):
 
         l_index = r_index - step
         if l_index <= 0:  # 最后到头了也不用向前看了
-            mx, mx_i = HiDeviationFinder.__arr_max(val_arr)
+            mx, mx_i = HiDeviationFinder.__arr_max(val_arr[0:r_index])
             return mx, mx_i, False
 
         mx, mx_i = HiDeviationFinder.__arr_max(val_arr[l_index:r_index])  # 找到一步之内的最大值
@@ -139,25 +140,32 @@ class HiDeviationFinder(object):
     #
     #     return val_1, index_1, has_next_1, val_2, index_2, has_next_2
 
-    def is_hi_deviation(self, interval, debug_flag=False):
-        step = self.__valid_hi_price_interval // 3 * 2
+    def is_hi_deviation(self, debug_flag=False):
+        step = self.__valid_hi_price_interval-1
         len_arr = len(self.__hi_price)
 
         max_r, max_r_i, has_next = HiDeviationFinder.__max_valid_val(self.__hi_price, step, len_arr,
                                                                      self.__valid_hi_price_interval)
+
         if not has_next:  # 没办法比较，认为没有背离
             return False
-        max_l_i = max(0, max_r_i-step)
+        max_l_i = max(0, max_r_i - step)
         while has_next:  # 没有发现背离而且可以和下一个比较
+            logger.debug("左侧点(%s, %s | %s, %s)" % (
+                self.__dt[max_l_i], max_l_i, self.__hi_price[max_l_i], self.__rsi[max_l_i]))
             max_l, max_l_i, has_next = HiDeviationFinder.__max_valid_val(self.__hi_price, step, max_l_i,
                                                                          self.__valid_hi_price_interval)
-
+            logger.debug("右侧点(%s, %s | %s, %s)" % (
+                self.__dt[max_r_i], max_r_i, self.__hi_price[max_r_i], self.__rsi[max_r_i]))
+            logger.debug("左侧点(%s, %s | %s, %s)" % (
+                self.__dt[max_l_i], max_l_i, self.__hi_price[max_l_i], self.__rsi[max_l_i]))
             if self.__is_price_equal_or_hi(max_l, max_r):
                 if self.__is_rsi_hi_deviation(self.__rsi[max_l_i], self.__rsi[max_r_i]):
-                    if len_arr - max_r_i <= interval:
+                    if len_arr - max_r_i <= self.__effective_deviation_distance:
                         logger.info("顶背离发生(%s, %s, %s, %s), (%s, %s, %s, %s)" % (
                             self.__dt[max_l_i], max_l, self.__rsi[max_l_i], max_l_i, self.__dt[max_r_i], max_r,
                             self.__rsi[max_r_i], max_r_i))
+                        logger.info("实际距离当前周期%s, 设定有效距离%s"%(len_arr - max_r_i, self.__effective_deviation_distance))
                         return True
                     else:
                         logger.debug("不满足周期间隔(%s, %s, %s, %s), (%s, %s, %s, %s)" % (
@@ -177,6 +185,8 @@ class HiDeviationFinder(object):
                     self.__rsi[max_r_i], max_r_i))
                 max_r = max_l
                 max_r_i = max_l_i
+
+        return False
 
     def is_hi_deviation_2(self, interval, debug_flag=False):
         """

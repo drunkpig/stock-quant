@@ -46,7 +46,11 @@ SHORT_RSI_SELL_THRESHOLD = int(cfg.get("default", 'short_rsi_sell_threshold'))
 MA_PRICE_PERIOD = int(cfg.get("default", 'ma_price_period'))
 PRICE_MA_THRESHOLD = float(cfg.get("default", 'price_ma_threshold'))
 RISK_PERIOD = int(cfg.get("default", 'risk_period'))
-DEVIATION_VALID_INTERVAL = 30  #一个背离管多远
+
+EFFECTIVE_DEVIATION_DISTANCE = int(cfg.get("default", 'effective_deviation_distance'))  # 一个背离管多远
+VALID_HI_PRICE_INTERVAL = int(cfg.get("default", 'valid_hi_price_interval'))  # 左右两侧价格必须低于这个价格才算高点
+PRICE_EQ_ENDURANCE = float(cfg.get("default", 'price_eq_endurance'))
+RSI_EQ_ENDURANCE = float(cfg.get("default", 'rsi_eq_endurance'))
 
 
 def init(context):
@@ -88,7 +92,8 @@ def on_bar(context, bars):
             context.long_rsi_compute = THS_RSI(context.LONG_RSI_PERIOD, sma_diff_gt0, sma_diff_abs, rsi)
 
             history_rsi = HiDeviationFinder.compute_history_rsi(close_price_arr, context.LONG_RSI_PERIOD)
-            hi_deviation_finder = HiDeviationFinder(RISK_PERIOD)
+            hi_deviation_finder = HiDeviationFinder(RISK_PERIOD, VALID_HI_PRICE_INTERVAL, PRICE_EQ_ENDURANCE,
+                                                    RSI_EQ_ENDURANCE,EFFECTIVE_DEVIATION_DISTANCE)
             hi_deviation_finder.add(heigest_price.tolist(), history_rsi, heigest_price_dt)
             context.hi_deviation_finder = hi_deviation_finder
         else:
@@ -123,11 +128,11 @@ def on_bar(context, bars):
             close_price = round(close_price_2[1], 2)
             if rsi <= SHORT_RSI_BUY_THRESHOLD and context.watch_buy == True:  # 短期rsi小于阈值而且长周期发出买入信号
                 if close_price < ma_price * (1 - PRICE_MA_THRESHOLD):
-                    if not context.hi_deviation_finder.is_hi_deviation(DEVIATION_VALID_INTERVAL, context.debug_data):
+                    if not context.hi_deviation_finder.is_hi_deviation(context.debug_data):
                         print("%s买入\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
                     else:
                         print("%s顶背离拒绝买入\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
-                elif not context.hi_deviation_finder.is_hi_deviation(DEVIATION_VALID_INTERVAL):
+                elif not context.hi_deviation_finder.is_hi_deviation():
                     print("%s*买入\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
 
             elif rsi > SHORT_RSI_SELL_THRESHOLD:
