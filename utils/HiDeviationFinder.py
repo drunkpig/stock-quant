@@ -10,7 +10,8 @@ logger = logging.getLogger()
 
 
 class HiDeviationFinder(object):
-    def __init__(self, cache_len, valid_hi_price_interval, price_eq_endurance, rsi_eq_endurance, effective_deviation_distance):
+    def __init__(self, cache_len, valid_hi_price_interval, price_eq_endurance, rsi_eq_endurance,
+                 effective_deviation_distance, hi_price_2_point_distance):
         self.__cache_len = cache_len  # 保存多少个周期的数据
         self.__hi_price = []
         self.__rsi = []
@@ -19,6 +20,7 @@ class HiDeviationFinder(object):
         self.__valid_hi_price_interval = valid_hi_price_interval  # 有效最高价格必须要高于左侧和右侧多少个点
         self.__price_equal_endurance = price_eq_endurance  # 判断高低点的误差
         self.__rsi_equal_endurance = rsi_eq_endurance
+        self.__hi_price_2_point_distance = hi_price_2_point_distance
 
     @staticmethod
     def compute_history_rsi(close_price, time_period):
@@ -81,7 +83,11 @@ class HiDeviationFinder(object):
         :param val_r:
         :return:
         """
-        delta = abs(val_l - val_r) / min(val_l, val_r)
+        if val_l==0 or val_r==0:
+            min_val = 0.1
+        else:
+            min_val = min(val_l, val_r, 0.01)
+        delta = abs(val_l - val_r) / min_val
         if delta < self.__price_equal_endurance:
             return True
         elif val_r > val_l:
@@ -141,7 +147,7 @@ class HiDeviationFinder(object):
     #     return val_1, index_1, has_next_1, val_2, index_2, has_next_2
 
     def is_hi_deviation(self, debug_flag=False):
-        step = self.__valid_hi_price_interval-1
+        step = self.__valid_hi_price_interval - 1
         len_arr = len(self.__hi_price)
 
         max_r, max_r_i, has_next = HiDeviationFinder.__max_valid_val(self.__hi_price, step, len_arr,
@@ -153,7 +159,8 @@ class HiDeviationFinder(object):
         while has_next:  # 没有发现背离而且可以和下一个比较
             logger.debug("左侧点(%s, %s | %s, %s)" % (
                 self.__dt[max_l_i], max_l_i, self.__hi_price[max_l_i], self.__rsi[max_l_i]))
-            max_l, max_l_i, has_next = HiDeviationFinder.__max_valid_val(self.__hi_price, step, max_l_i,
+            next_r_i = max(0, max_l_i - step)
+            max_l, max_l_i, has_next = HiDeviationFinder.__max_valid_val(self.__hi_price, step, next_r_i,
                                                                          self.__valid_hi_price_interval)
             logger.debug("右侧点(%s, %s | %s, %s)" % (
                 self.__dt[max_r_i], max_r_i, self.__hi_price[max_r_i], self.__rsi[max_r_i]))
@@ -161,18 +168,34 @@ class HiDeviationFinder(object):
                 self.__dt[max_l_i], max_l_i, self.__hi_price[max_l_i], self.__rsi[max_l_i]))
             if self.__is_price_equal_or_hi(max_l, max_r):
                 if self.__is_rsi_hi_deviation(self.__rsi[max_l_i], self.__rsi[max_r_i]):
-                    if len_arr - max_r_i <= self.__effective_deviation_distance:
-                        logger.info("顶背离发生(%s, %s, %s, %s), (%s, %s, %s, %s)" % (
-                            self.__dt[max_l_i], max_l, self.__rsi[max_l_i], max_l_i, self.__dt[max_r_i], max_r,
-                            self.__rsi[max_r_i], max_r_i))
-                        logger.info("实际距离当前周期%s, 设定有效距离%s"%(len_arr - max_r_i, self.__effective_deviation_distance))
-                        return True
+                    distance_now = len_arr - max_r_i  # 距离当前距离多少
+                    top_point_distance = abs(max_r_i - max_l_i)  # 2个顶点之间的距离
+                    if top_point_distance >= self.__hi_price_2_point_distance:
+                        if distance_now <= self.__effective_deviation_distance:
+                            logger.info("顶背离发生(%s, %s, %s, %s), (%s, %s, %s, %s)" % (
+                                self.__dt[max_l_i], max_l, self.__rsi[max_l_i], max_l_i, self.__dt[max_r_i], max_r,
+                                self.__rsi[max_r_i], max_r_i))
+                            logger.debug(
+                                "0*实际距离当前周期%s, 设定有效距离%s" % (len_arr - max_r_i, self.__effective_deviation_distance))
+                            return True
+                        else:
+                            logger.debug(
+                                "1*实际距离当前周期%s, 设定有效距离%s" % (len_arr - max_r_i, self.__effective_deviation_distance))
+                            logger.debug("不满足周期间隔(%s, %s, %s, %s), (%s, %s, %s, %s)" % (
+                                self.__dt[max_l_i], max_l, self.__rsi[max_l_i], max_l_i, self.__dt[max_r_i], max_r,
+                                self.__rsi[max_r_i], max_r_i))
+                            max_r = max_l
+                            max_r_i = max_l_i
+                            return False
                     else:
-                        logger.debug("不满足周期间隔(%s, %s, %s, %s), (%s, %s, %s, %s)" % (
+                        if max_l > max_r:
+                            max_r = max_l
+                            max_r_i = max_l_i
+
+                        logger.debug("两顶点之间距离%s<%s太短(%s, %s, %s, %s), (%s, %s, %s, %s)" % (
+                            top_point_distance, self.__hi_price_2_point_distance,
                             self.__dt[max_l_i], max_l, self.__rsi[max_l_i], max_l_i, self.__dt[max_r_i], max_r,
                             self.__rsi[max_r_i], max_r_i))
-                        max_r = max_l
-                        max_r_i = max_l_i
                 else:
                     logger.debug("没有背离(%s, %s, %s, %s), (%s, %s, %s, %s)" % (
                         self.__dt[max_l_i], max_l, self.__rsi[max_l_i], max_l_i, self.__dt[max_r_i], max_r,

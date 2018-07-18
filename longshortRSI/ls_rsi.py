@@ -51,7 +51,7 @@ EFFECTIVE_DEVIATION_DISTANCE = int(cfg.get("default", 'effective_deviation_dista
 VALID_HI_PRICE_INTERVAL = int(cfg.get("default", 'valid_hi_price_interval'))  # 左右两侧价格必须低于这个价格才算高点
 PRICE_EQ_ENDURANCE = float(cfg.get("default", 'price_eq_endurance'))
 RSI_EQ_ENDURANCE = float(cfg.get("default", 'rsi_eq_endurance'))
-
+HI_PRICE_2_POINT_DISTANCE=int(cfg.get("default", 'hi_price_2_point_distance'))
 
 def init(context):
     context.SYMBOLS = my_symbols
@@ -83,7 +83,7 @@ def on_bar(context, bars):
         heigest_price = np.array(
             context.data(context.SYMBOLS, frquency, context.WINDOW, fields='high').values.reshape(context.WINDOW))
 
-        if context.long_rsi_compute == None:
+        if context.long_rsi_compute is None:
             heigest_price_dt = np.array(
                 context.data(context.SYMBOLS, frquency, context.WINDOW, fields='eob').values.reshape(context.WINDOW))
             heigest_price_dt = list(map(lambda x: str(x), heigest_price_dt))
@@ -93,7 +93,8 @@ def on_bar(context, bars):
 
             history_rsi = HiDeviationFinder.compute_history_rsi(close_price_arr, context.LONG_RSI_PERIOD)
             hi_deviation_finder = HiDeviationFinder(RISK_PERIOD, VALID_HI_PRICE_INTERVAL, PRICE_EQ_ENDURANCE,
-                                                    RSI_EQ_ENDURANCE,EFFECTIVE_DEVIATION_DISTANCE)
+                                                    RSI_EQ_ENDURANCE,EFFECTIVE_DEVIATION_DISTANCE,
+                                                    HI_PRICE_2_POINT_DISTANCE)
             hi_deviation_finder.add(heigest_price.tolist(), history_rsi, heigest_price_dt)
             context.hi_deviation_finder = hi_deviation_finder
         else:
@@ -131,7 +132,7 @@ def on_bar(context, bars):
                     if not context.hi_deviation_finder.is_hi_deviation(context.debug_data):
                         print("%s买入\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
                     else:
-                        print("%s顶背离拒绝买入\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
+                        print("%s风控拒绝买入\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
                 elif not context.hi_deviation_finder.is_hi_deviation():
                     print("%s*买入\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
 
@@ -147,7 +148,7 @@ if __name__ == '__main__':
         mode=MODE_BACKTEST,
         token='5e18d749d600b7caa519c7caa4f09853aaa9deb2',
         backtest_start_time='2018-06-01 09:30:00',
-        backtest_end_time='2018-07-14 15:00:00',
+        backtest_end_time='2018-07-18 15:00:00',
         backtest_adjust=ADJUST_NONE,
         backtest_initial_cash=100000,
         backtest_commission_ratio=0.0002,
