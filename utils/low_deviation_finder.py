@@ -1,0 +1,3 @@
+
+class LowDeviationFinder(object):
+    pass

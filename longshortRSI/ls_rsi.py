@@ -25,8 +25,9 @@ from configparser import ConfigParser
 import logging
 import numpy as np
 
-from utils.HiDeviationFinder import HiDeviationFinder
+from utils.hi_deviation_finder import HiDeviationFinder
 from utils.ths_rsi import THS_RSI
+from utils.utils import is_stock_index_down_much, is_stock_down_much
 
 logger = logging.getLogger()
 this_dir, this_file = os.path.split(__file__)
@@ -51,7 +52,9 @@ EFFECTIVE_DEVIATION_DISTANCE = int(cfg.get("default", 'effective_deviation_dista
 VALID_HI_PRICE_INTERVAL = int(cfg.get("default", 'valid_hi_price_interval'))  # 左右两侧价格必须低于这个价格才算高点
 PRICE_EQ_ENDURANCE = float(cfg.get("default", 'price_eq_endurance'))
 RSI_EQ_ENDURANCE = float(cfg.get("default", 'rsi_eq_endurance'))
-HI_PRICE_2_POINT_DISTANCE=int(cfg.get("default", 'hi_price_2_point_distance'))
+HI_PRICE_2_POINT_DISTANCE = int(cfg.get("default", 'hi_price_2_point_distance'))
+STOCK_INDEX = {"SH": "SHSE.000001", "SZ": "SZSE.399001"}.get(my_symbols[0:2])
+
 
 def init(context):
     context.SYMBOLS = my_symbols
@@ -93,20 +96,11 @@ def on_bar(context, bars):
 
             history_rsi = HiDeviationFinder.compute_history_rsi(close_price_arr, context.LONG_RSI_PERIOD)
             hi_deviation_finder = HiDeviationFinder(RISK_PERIOD, VALID_HI_PRICE_INTERVAL, PRICE_EQ_ENDURANCE,
-                                                    RSI_EQ_ENDURANCE,EFFECTIVE_DEVIATION_DISTANCE,
+                                                    RSI_EQ_ENDURANCE, EFFECTIVE_DEVIATION_DISTANCE,
                                                     HI_PRICE_2_POINT_DISTANCE)
             hi_deviation_finder.add(heigest_price.tolist(), history_rsi, heigest_price_dt)
             context.hi_deviation_finder = hi_deviation_finder
         else:
-            # date = '2018-06-15'
-            # watch_date = str(bars[0]['eob']).split(' ')[0]
-            # if date==watch_date:
-            #     context.debug_data=True
-            #
-            # dt2 = '2018-06-07 10:15:00'
-            # if str(bars[0]['eob'])==dt2:
-            #     print(bars[0]['high'])
-            #     exit(-1)
             close_price_2 = close_price_arr[-2:].values.reshape(2)
             heigest_price_1 = bars[0]['high']
             rsi = context.long_rsi_compute.ths_rsi(close_price_2)
@@ -127,17 +121,22 @@ def on_bar(context, bars):
             rsi = context.short_rsi_compute.ths_rsi(close_price_2)
             ma_price = round(np.mean(close_price_arr[-MA_PRICE_PERIOD:].values.reshape(MA_PRICE_PERIOD)), 2)
             close_price = round(close_price_2[1], 2)
-            if rsi <= SHORT_RSI_BUY_THRESHOLD and context.watch_buy == True:  # 短期rsi小于阈值而且长周期发出买入信号
-                if close_price < ma_price * (1 - PRICE_MA_THRESHOLD):
-                    if not context.hi_deviation_finder.is_hi_deviation(context.debug_data):
-                        print("%s买入\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
-                    else:
-                        print("%s风控拒绝买入\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
-                elif not context.hi_deviation_finder.is_hi_deviation():
-                    print("%s*买入\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
 
-            elif rsi > SHORT_RSI_SELL_THRESHOLD:
-                print("%s卖出\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
+            d_1, result_1 = is_stock_index_down_much(STOCK_INDEX)
+            d_2, result_2 = is_stock_down_much(my_symbols)
+            if result_1 or result_2:
+                logger.info("大盘/个股跌幅过大，禁止交易(大盘: %s%%, %s: %s%%)"%(d_1, my_symbols, d_2))
+                return
+            else:
+                if rsi <= SHORT_RSI_BUY_THRESHOLD and context.watch_buy == True:  # 短期rsi小于阈值而且长周期发出买入信号
+                    if close_price < ma_price * (1 - PRICE_MA_THRESHOLD):
+                        is_price_deviation = context.hi_deviation_finder.is_hi_deviation(context.debug_data)
+                        if not is_price_deviation:
+                            print("%s买入\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
+                        else:
+                            print("%sRSI背离拒绝买入\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
+                elif rsi > SHORT_RSI_SELL_THRESHOLD:
+                    print("%s卖出\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
 
 
 if __name__ == '__main__':
