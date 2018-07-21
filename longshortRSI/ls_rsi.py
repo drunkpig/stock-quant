@@ -147,7 +147,7 @@ if __name__ == '__main__':
         mode=MODE_BACKTEST,
         token='5e18d749d600b7caa519c7caa4f09853aaa9deb2',
         backtest_start_time='2018-06-01 09:30:00',
-        backtest_end_time='2018-07-18 15:00:00',
+        backtest_end_time='2018-07-19 15:00:00',
         backtest_adjust=ADJUST_NONE,
         backtest_initial_cash=100000,
         backtest_commission_ratio=0.0002,
