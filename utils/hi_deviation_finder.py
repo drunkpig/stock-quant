@@ -2,6 +2,7 @@ import logging
 from logging.config import fileConfig
 from functools import reduce
 import numpy as np
+from utils.line_process import find_hi_point
 
 logger = logging.getLogger()
 
@@ -101,131 +102,175 @@ class HiDeviationFinder(object):
         else:
             return False
 
-    @staticmethod
-    def __max_valid_val(val_arr, step, r_index, valid_price_interval, pre_point_i=10000):
-        """
-
-        :param val_arr:
-        :param step:
-        :param r_index:
-        :param valid_price_interval:
-        :return: （最大值，最大值下标，是否可以继续找下一个）
-        """
-        assert step < valid_price_interval
-
-        l_index = r_index - step
-        if l_index <= 0:  # 最后到头了也不用向前看了
-            mx, mx_i = HiDeviationFinder.__arr_max(val_arr[0:r_index])
-            max_after_val, mx_after_val_i = HiDeviationFinder.__arr_max(  # 向后检查
-                val_arr[mx_i:min(mx_i + valid_price_interval, len(val_arr))])
-            if mx >= max_after_val:
-                #logger.info("@@")
-                return mx, mx_i, False
-            else:
-                #logger.info("!!")
-                return 0, 0, False  # 为了避免判断麻烦就返回0代替None，这样肯定不会顶背离
-
-        #logger.info("++")
-
-        mx, mx_i = HiDeviationFinder.__arr_max(val_arr[l_index:r_index])  # 找到一步之内的最大值
-        mx_i = l_index + mx_i
-
-        # 如果最大值向后去看和右侧最大值统治的区间重合则排除这个点继续向前搜索
-        if mx_i+valid_price_interval >= pre_point_i-valid_price_interval:
-            return HiDeviationFinder.__max_valid_val(val_arr, step, max(0, r_index-valid_price_interval),
-                                                     valid_price_interval, pre_point_i)
-
-        # 从最大值向前推进
-        # r_index = l_index
-        l_index = mx_i - valid_price_interval
-        l_index_abs = max(0, l_index)
-        mx_pre_val, mx_pre_val_i = HiDeviationFinder.__arr_max(val_arr[l_index_abs:mx_i])  # 向前检查是否是有效的最大值
-        mx_pre_val_i = l_index_abs + mx_pre_val_i
-
-        # 向后看看是不是最大的
-        after_i = min(mx_i + valid_price_interval + 1, len(val_arr))
-        max_after_val, mx_after_val_i = HiDeviationFinder.__arr_max(val_arr[mx_i + 1:after_i])
-        mx_after_val_i = mx_i + 1 + mx_after_val_i
-
-        if mx >= max_after_val and mx >= mx_pre_val:  # 比前后都大
-            return mx, mx_i, l_index > 0
-        elif mx < max_after_val and mx >= mx_pre_val:  # 比后面小，但是比前面大,继续向前找大的
-            return HiDeviationFinder.__max_valid_val(val_arr, step, max(0, mx_i - valid_price_interval),
-                                                     valid_price_interval, pre_point_i)
-        else:
-            # mx>=max_after_val and mx<mx_pre_val: #比前面小，比后面大
-            return HiDeviationFinder.__max_valid_val(val_arr, step, mx_pre_val_i + 1,
-                                                     valid_price_interval, pre_point_i)
+    def __watch(self, arr):
+        for i in range(len(arr)):
+            index = arr[i]
+            logger.info("%s\t%s\t%s\t%s"%(self.__dt[index], self.__hi_price[index], self.__rsi[index],index))
 
     def is_hi_deviation(self, debug_flag=False):
-        """
-        判断是否是背离产生了
-        :param debug_flag:
-        :return:
-        """
-        step = self.__valid_hi_price_interval - 1
-        len_arr = len(self.__hi_price)
+        len_dt = len(self.__hi_price)
+        hi_points_index = find_hi_point(self.__hi_price, self.__valid_hi_price_interval)
+        #self.__watch(hi_points_index)
+        for i in reversed(range(0, len(hi_points_index))):
+            i_l = hi_points_index[i - 1]
+            i_r = hi_points_index[i]
+            if i_l < 0:
+                break
 
-        max_r, max_r_i, has_next = self.__max_valid_val(self.__hi_price, step, len_arr,
-                                                        self.__valid_hi_price_interval)
-        if not has_next:  # 没办法比较，认为没有背离
-            #logger.info("&&&&")
-            return False
-        max_l_i = max(0, max_r_i - step)
-        while has_next:  # 没有发现背离而且可以和下一个比较
-            logger.debug("左侧点(%s, %s | %s, %s)" % (
-                self.__dt[max_l_i], max_l_i, self.__hi_price[max_l_i], self.__rsi[max_l_i]))
-            next_r_i = max(0, max_l_i - self.__valid_hi_price_interval)
-            max_l, max_l_i, has_next = self.__max_valid_val(self.__hi_price, step, next_r_i,
-                                                            self.__valid_hi_price_interval, max_r_i)
+            price_l = self.__hi_price[i_l]
+            price_r = self.__hi_price[i_r]
+            rsi_l = self.__rsi[i_l]
+            rsi_r = self.__rsi[i_r]
 
-            logger.debug("右侧点(%s, %s | %s, %s)" % (
-                self.__dt[max_r_i], max_r_i, self.__hi_price[max_r_i], self.__rsi[max_r_i]))
-            logger.debug("左侧点(%s, %s | %s, %s)" % (
-                self.__dt[max_l_i], max_l_i, self.__hi_price[max_l_i], self.__rsi[max_l_i]))
-            if self.__is_price_equal_or_hi(max_l, max_r):
-
-                if self.__is_rsi_hi_deviation(self.__rsi[max_l_i], self.__rsi[max_r_i]):
-                    distance_now = len_arr - max_r_i  # 距离当前距离多少
-                    top_point_distance = abs(max_r_i - max_l_i)  # 2个顶点之间的距离
-                    if top_point_distance >= self.__hi_price_2_point_distance:
-                        if distance_now <= self.__effective_deviation_distance:
-                            logger.info("顶背离%s发生(%s, %s, %s, %s), (%s, %s, %s, %s)" % (
-                                len_arr - max_r_i, self.__dt[max_l_i], max_l, self.__rsi[max_l_i], max_l_i,
-                                self.__dt[max_r_i], max_r,
-                                self.__rsi[max_r_i], max_r_i))
-                            logger.debug(
-                                "0*实际距离当前周期%s, 设定有效距离%s" % (len_arr - max_r_i, self.__effective_deviation_distance))
-                            return True
-                        else:
-                            logger.info(
-                                "1*实际距离当前周期%s, 设定有效距离%s" % (len_arr - max_r_i, self.__effective_deviation_distance))
-                            logger.info("不满足周期间隔(%s, %s, %s, %s), (%s, %s, %s, %s)" % (
-                                self.__dt[max_l_i], max_l, self.__rsi[max_l_i], max_l_i, self.__dt[max_r_i], max_r,
-                                self.__rsi[max_r_i], max_r_i))
-
-                            return False
-                    else:
-                        logger.info("两顶点之间距离%s<%s太短(%s, %s, %s, %s), (%s, %s, %s, %s)" % (
-                            top_point_distance, self.__hi_price_2_point_distance,
-                            self.__dt[max_l_i], max_l, self.__rsi[max_l_i], max_l_i, self.__dt[max_r_i], max_r,
-                            self.__rsi[max_r_i], max_r_i))
-
-                        max_r = max_l
-                        max_r_i = max_l_i
-
+            is_price_ok = self.__is_price_equal_or_hi(price_l, price_r)
+            is_rsi_ok = self.__is_rsi_hi_deviation(rsi_l, rsi_r)
+            if is_price_ok and is_rsi_ok:
+                if (len_dt - i_r) > self.__effective_deviation_distance:
+                    logger.info("背离发生,但距离太远[%s>%s]>> (%s, %s, %s, %s), (%s,%s, %s, %s)" % (
+                        len_dt - i_r, self.__effective_deviation_distance, self.__dt[i_l], price_l, rsi_l, i_l, self.__dt[i_r], price_r, rsi_r, i_r))
+                    return False
+                elif (i_r - i_l - 1) < self.__hi_price_2_point_distance:
+                    logger.info("背离发生，但两点距离太近[%s<%s]>> (%s, %s, %s, %s), (%s,%s, %s, %s)" % (
+                        i_r - i_l - 1, self.__hi_price_2_point_distance,self.__dt[i_l], price_l, rsi_l, i_l, self.__dt[i_r], price_r, rsi_r, i_r))
+                    #return False
                 else:
-                    logger.info("没有背离(%s, %s, %s, %s), (%s, %s, %s, %s)" % (
-                        self.__dt[max_l_i], max_l, self.__rsi[max_l_i], max_l_i, self.__dt[max_r_i], max_r,
-                        self.__rsi[max_r_i], max_r_i))
-                    max_r = max_l
-                    max_r_i = max_l_i
-            else:
-                logger.info("价格不满足(%s, %s, %s, %s), (%s, %s, %s, %s)" % (
-                    self.__dt[max_l_i], max_l, self.__rsi[max_l_i], max_l_i, self.__dt[max_r_i], max_r,
-                    self.__rsi[max_r_i], max_r_i))
-                max_r = max_l
-                max_r_i = max_l_i
+                    return True
+            elif not is_price_ok:
+                logger.debug("价格不满足>> (%s, %s, %s, %s), (%s,%s, %s, %s)" % (
+                    self.__dt[i_l], price_l, rsi_l, i_l, self.__dt[i_r], price_r, rsi_r, i_r))
+                #return False
+            elif not is_rsi_ok:
+                logger.debug("RSI没有背离>> (%s, %s, %s, %s), (%s,%s, %s, %s)" % (
+                    self.__dt[i_l], price_l, rsi_l, i_l, self.__dt[i_r], price_r, rsi_r, i_r))
+                #return False
 
-        #logger.info("****")
         return False
+
+    # @staticmethod
+    # def __max_valid_val(val_arr, step, r_index, valid_price_interval, pre_point_i=10000):
+    #     """
+    #
+    #     :param val_arr:
+    #     :param step:
+    #     :param r_index:
+    #     :param valid_price_interval:
+    #     :return: （最大值，最大值下标，是否可以继续找下一个）
+    #     """
+    #     assert step < valid_price_interval
+    #
+    #     l_index = r_index - step
+    #     if l_index <= 0:  # 最后到头了也不用向前看了
+    #         mx, mx_i = HiDeviationFinder.__arr_max(val_arr[0:r_index])
+    #         max_after_val, mx_after_val_i = HiDeviationFinder.__arr_max(  # 向后检查
+    #             val_arr[mx_i:min(mx_i + valid_price_interval, len(val_arr))])
+    #         if mx >= max_after_val:
+    #             # logger.info("@@")
+    #             return mx, mx_i, False
+    #         else:
+    #             # logger.info("!!")
+    #             return 0, 0, False  # 为了避免判断麻烦就返回0代替None，这样肯定不会顶背离
+    #
+    #     # logger.info("++")
+    #
+    #     mx, mx_i = HiDeviationFinder.__arr_max(val_arr[l_index:r_index])  # 找到一步之内的最大值
+    #     mx_i = l_index + mx_i
+    #
+    #     # 如果最大值向后去看和右侧最大值统治的区间重合则排除这个点继续向前搜索
+    #     if mx_i + valid_price_interval >= pre_point_i - valid_price_interval:
+    #         return HiDeviationFinder.__max_valid_val(val_arr, step, max(0, r_index - valid_price_interval),
+    #                                                  valid_price_interval, pre_point_i)
+    #
+    #     # 从最大值向前推进
+    #     # r_index = l_index
+    #     l_index = mx_i - valid_price_interval
+    #     l_index_abs = max(0, l_index)
+    #     mx_pre_val, mx_pre_val_i = HiDeviationFinder.__arr_max(val_arr[l_index_abs:mx_i])  # 向前检查是否是有效的最大值
+    #     mx_pre_val_i = l_index_abs + mx_pre_val_i
+    #
+    #     # 向后看看是不是最大的
+    #     after_i = min(mx_i + valid_price_interval + 1, len(val_arr))
+    #     max_after_val, mx_after_val_i = HiDeviationFinder.__arr_max(val_arr[mx_i + 1:after_i])
+    #     mx_after_val_i = mx_i + 1 + mx_after_val_i
+    #
+    #     if mx >= max_after_val and mx >= mx_pre_val:  # 比前后都大
+    #         return mx, mx_i, l_index > 0
+    #     elif mx < max_after_val and mx >= mx_pre_val:  # 比后面小，但是比前面大,继续向前找大的
+    #         return HiDeviationFinder.__max_valid_val(val_arr, step, max(0, mx_i - valid_price_interval),
+    #                                                  valid_price_interval, pre_point_i)
+    #     else:
+    #         # mx>=max_after_val and mx<mx_pre_val: #比前面小，比后面大
+    #         return HiDeviationFinder.__max_valid_val(val_arr, step, mx_pre_val_i + 1,
+    #                                                  valid_price_interval, pre_point_i)
+    #
+    # def is_hi_deviation_1(self, debug_flag=False):
+    #     """
+    #     判断是否是背离产生了
+    #     :param debug_flag:
+    #     :return:
+    #     """
+    #     step = self.__valid_hi_price_interval - 1
+    #     len_arr = len(self.__hi_price)
+    #
+    #     max_r, max_r_i, has_next = self.__max_valid_val(self.__hi_price, step, len_arr,
+    #                                                     self.__valid_hi_price_interval)
+    #     if not has_next:  # 没办法比较，认为没有背离
+    #         # logger.info("&&&&")
+    #         return False
+    #     max_l_i = max(0, max_r_i - step)
+    #     while has_next:  # 没有发现背离而且可以和下一个比较
+    #         logger.debug("左侧点(%s, %s | %s, %s)" % (
+    #             self.__dt[max_l_i], max_l_i, self.__hi_price[max_l_i], self.__rsi[max_l_i]))
+    #         next_r_i = max(0, max_l_i - self.__valid_hi_price_interval)
+    #         max_l, max_l_i, has_next = self.__max_valid_val(self.__hi_price, step, next_r_i,
+    #                                                         self.__valid_hi_price_interval, max_r_i)
+    #
+    #         logger.debug("右侧点(%s, %s | %s, %s)" % (
+    #             self.__dt[max_r_i], max_r_i, self.__hi_price[max_r_i], self.__rsi[max_r_i]))
+    #         logger.debug("左侧点(%s, %s | %s, %s)" % (
+    #             self.__dt[max_l_i], max_l_i, self.__hi_price[max_l_i], self.__rsi[max_l_i]))
+    #         if self.__is_price_equal_or_hi(max_l, max_r):
+    #
+    #             if self.__is_rsi_hi_deviation(self.__rsi[max_l_i], self.__rsi[max_r_i]):
+    #                 distance_now = len_arr - max_r_i  # 距离当前距离多少
+    #                 top_point_distance = abs(max_r_i - max_l_i)  # 2个顶点之间的距离
+    #                 if top_point_distance >= self.__hi_price_2_point_distance:
+    #                     if distance_now <= self.__effective_deviation_distance:
+    #                         logger.info("顶背离%s发生(%s, %s, %s, %s), (%s, %s, %s, %s)" % (
+    #                             len_arr - max_r_i, self.__dt[max_l_i], max_l, self.__rsi[max_l_i], max_l_i,
+    #                             self.__dt[max_r_i], max_r,
+    #                             self.__rsi[max_r_i], max_r_i))
+    #                         logger.debug(
+    #                             "0*实际距离当前周期%s, 设定有效距离%s" % (len_arr - max_r_i, self.__effective_deviation_distance))
+    #                         return True
+    #                     else:
+    #                         logger.info(
+    #                             "1*实际距离当前周期%s, 设定有效距离%s" % (len_arr - max_r_i, self.__effective_deviation_distance))
+    #                         logger.info("不满足周期间隔(%s, %s, %s, %s), (%s, %s, %s, %s)" % (
+    #                             self.__dt[max_l_i], max_l, self.__rsi[max_l_i], max_l_i, self.__dt[max_r_i], max_r,
+    #                             self.__rsi[max_r_i], max_r_i))
+    #
+    #                         return False
+    #                 else:
+    #                     logger.info("两顶点之间距离%s<%s太短(%s, %s, %s, %s), (%s, %s, %s, %s)" % (
+    #                         top_point_distance, self.__hi_price_2_point_distance,
+    #                         self.__dt[max_l_i], max_l, self.__rsi[max_l_i], max_l_i, self.__dt[max_r_i], max_r,
+    #                         self.__rsi[max_r_i], max_r_i))
+    #
+    #                     max_r = max_l
+    #                     max_r_i = max_l_i
+    #
+    #             else:
+    #                 logger.info("没有背离(%s, %s, %s, %s), (%s, %s, %s, %s)" % (
+    #                     self.__dt[max_l_i], max_l, self.__rsi[max_l_i], max_l_i, self.__dt[max_r_i], max_r,
+    #                     self.__rsi[max_r_i], max_r_i))
+    #                 max_r = max_l
+    #                 max_r_i = max_l_i
+    #         else:
+    #             logger.info("价格不满足(%s, %s, %s, %s), (%s, %s, %s, %s)" % (
+    #                 self.__dt[max_l_i], max_l, self.__rsi[max_l_i], max_l_i, self.__dt[max_r_i], max_r,
+    #                 self.__rsi[max_r_i], max_r_i))
+    #             max_r = max_l
+    #             max_r_i = max_l_i
+    #
+    #     # logger.info("****")
+    #     return False
