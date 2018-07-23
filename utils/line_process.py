@@ -59,7 +59,7 @@ def __mid_idx(i_l, i_r, index_arr):
     return mid_idx
 
 
-def __optz_hi_eq_point(i_l, i_r, val_l, val_r, low_point_index_array, arr):
+def __optz_hi_eq_point(i_l, i_r, low_point_index_array, arr):
     """
     返回最合适高点的index
     距离两侧和中间最低点最远的高点最有效
@@ -75,8 +75,9 @@ def __optz_hi_eq_point(i_l, i_r, val_l, val_r, low_point_index_array, arr):
     mid_idx = __mid_idx(i_l, i_r, low_point_index_array)
     val_l = -1 if l_i is None else arr[l_i]
     val_r = -1 if r_i is None else arr[r_i]
-    val_mid, mid_i = (-1, -1) if len(mid_idx) == 0 else reduce(lambda x, y: (x[0], x[1]) if x[1] < y[1] else (y[0], y[1]),
-                                                         zip(range(len(mid_idx)), mid_idx))
+    val_mid, mid_i = (-1, -1) if len(mid_idx) == 0 else reduce(
+        lambda x, y: (x[0], x[1]) if x[1] < y[1] else (y[0], y[1]),
+        zip(range(len(mid_idx)), mid_idx))
     # 默认最坏情况下三个的值是相等的
     if val_l < val_r and val_l < val_mid:  # 左侧最小，保留右侧高点
         return i_r
@@ -91,7 +92,7 @@ def __optz_hi_eq_point(i_l, i_r, val_l, val_r, low_point_index_array, arr):
             return random.choice([i_r, i_l])
 
 
-def __optz_low_eq_point(i_l, i_r, val_l, val_r, hi_point_array):
+def __optz_low_eq_point(i_l, i_r, hi_point_array):
     """
     返回最合适的低点的index
     距离两侧和中间最高点最远的低点最有效
@@ -131,7 +132,7 @@ def find_hi_point(arr, valid_step):
                 else:  # 值相等，虽然很少会发生，取距离最低点最远的高点
                     if low_point_index is None:
                         low_point_index = __get_low_point(arr, valid_step)
-                    opt_i = __optz_hi_eq_point(i_l, i_r, arr[i_l], arr[i_r], low_point_index, arr)
+                    opt_i = __optz_hi_eq_point(i_l, i_r, low_point_index, arr)
                     ret_index.append(opt_i)
             else:
                 ret_index.append(i_l)
@@ -151,7 +152,7 @@ def find_low_point(arr, valid_step):
     :param valid_step:
     :return:
     """
-
+    hi_point_index = None
     min_val_index = __get_low_point(arr, valid_step)
     ret_index = []
     len_process = -1
@@ -166,8 +167,11 @@ def find_low_point(arr, valid_step):
                     ret_index.append(i_r)
                 elif arr[i_l] < arr[i_r]:
                     ret_index.append(i_l)
-                else:
-                    ret_index.append(i_l)  # 这里还应该根据最高点综合判断
+                else:  # 这里还应该根据最高点综合判断
+                    if hi_point_index is None:
+                        hi_point_index = __get_hi_point(arr, valid_step)
+                    opt_i = __optz_low_eq_point(i_l, i_r, hi_point_index, arr)
+                    ret_index.append(opt_i)
             else:
                 ret_index.append(i_l)
                 if i == len(min_val_index) - 1:
