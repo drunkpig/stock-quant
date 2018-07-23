@@ -45,3 +45,7 @@ ImportError: numpy.core.multiarray failed to import
 6. 执行 `$sudo ldconfig`
 7. 安装python的 ta-lib 包装  `$pip install Ta-Lib`
 
+### FAQ
+1. 在使用过程中发现比如RSI计算结果和同花顺差距比较大，也没有同花顺那么准确，这是因为一些函数比如均值计算在TA-LIB和同花顺中不一样
+2. TA-LIB貌似不能迭代计算，每次塞进去一大堆，有的迭代次数太少会导致精度下降，塞的太多消耗CPU
+3. 看着同花顺上的指标公式，其实实现也没那么难！而且回测调试对我等业余小散选手来说，看着同花顺做下对比挺好。
