@@ -26,8 +26,9 @@ import logging
 import numpy as np
 
 from utils.hi_deviation_finder import HiDeviationFinder
-from utils.ths_rsi import THS_RSI
-from utils.utils import is_stock_index_down_much, is_stock_down_much
+from utils.rsi import rsi_init, compute_history_rsi
+from utils.tsh_rsi import Tsh_RSI
+from utils.__utils import is_stock_index_down_much, is_stock_down_much
 
 logger = logging.getLogger()
 this_dir, this_file = os.path.split(__file__)
@@ -90,11 +91,11 @@ def on_bar(context, bars):
             heigest_price_dt = np.array(
                 context.data(context.SYMBOLS, frquency, context.WINDOW, fields='eob').values.reshape(context.WINDOW))
             heigest_price_dt = list(map(lambda x: str(x), heigest_price_dt))
-            sma_diff_gt0, sma_diff_abs, rsi = THS_RSI.init_parames(close_price_arr.values.reshape(context.WINDOW),
+            sma_diff_gt0, sma_diff_abs, rsi = rsi_init(close_price_arr.values.reshape(context.WINDOW),
                                                                    time_peroid=context.LONG_RSI_PERIOD)
-            context.long_rsi_compute = THS_RSI(context.LONG_RSI_PERIOD, sma_diff_gt0, sma_diff_abs, rsi)
+            context.long_rsi_compute = Tsh_RSI(context.LONG_RSI_PERIOD, sma_diff_gt0, sma_diff_abs, rsi)
 
-            history_rsi = HiDeviationFinder.compute_history_rsi(close_price_arr, context.LONG_RSI_PERIOD)
+            history_rsi = compute_history_rsi(close_price_arr.values.reshape(len(close_price_arr)), context.LONG_RSI_PERIOD)
             hi_deviation_finder = HiDeviationFinder(RISK_PERIOD, VALID_HI_PRICE_INTERVAL, PRICE_EQ_ENDURANCE,
                                                     RSI_EQ_ENDURANCE, EFFECTIVE_DEVIATION_DISTANCE,
                                                     HI_PRICE_2_POINT_DISTANCE)
@@ -113,9 +114,9 @@ def on_bar(context, bars):
     elif frquency == context.SHORT_FREQUENCY:
         close_price_arr = context.data(context.SYMBOLS, frquency, context.WINDOW, fields='close')
         if context.short_rsi_compute is None:
-            sma_diff_gt0, sma_diff_abs, rsi = THS_RSI.init_parames(close_price_arr.values.reshape(context.WINDOW),
+            sma_diff_gt0, sma_diff_abs, rsi = rsi_init(close_price_arr.values.reshape(context.WINDOW),
                                                                    time_peroid=context.SHORT_RSI_PERIOD)
-            context.short_rsi_compute = THS_RSI(context.SHORT_RSI_PERIOD, sma_diff_gt0, sma_diff_abs, rsi)
+            context.short_rsi_compute = Tsh_RSI(context.SHORT_RSI_PERIOD, sma_diff_gt0, sma_diff_abs, rsi)
         else:
             close_price_2 = close_price_arr[-2:].values.reshape(2)
             rsi = context.short_rsi_compute.ths_rsi(close_price_2)

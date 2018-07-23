@@ -26,29 +26,6 @@ def KDJ_CN(high, low, close, fastk_period, slowk_period, fastd_period):
     return kValue, dValue, jValue
 
 
-# 同花顺和通达信等软件中的RSI
-def RSI_CN(close, timeperiod):
-    """
-
-    :param close:
-    :param timeperiod:
-    :return: [diff, diff_abs, rsi]
-    """
-    diff = list(map(lambda x, y: x - y, close[1:], close[:-1]))
-    diffGt0 = list(map(lambda x: 0 if x < 0 else x, diff))
-    diffABS = list(map(lambda x: abs(x), diff))
-    diff = np.array(diff)
-    diffGt0 = np.array(diffGt0)
-    diffABS = np.array(diffABS)
-    diff = np.append(diff[0], diff)
-    diffGt0 = np.append(diffGt0[0], diffGt0)
-    diffABS = np.append(diffABS[0], diffABS)
-    rsi = map(lambda x: SMA_CN(diffGt0[:x], timeperiod) / SMA_CN(diffABS[:x], timeperiod) * 100
-              , range(1, len(diffGt0) + 1))
-    rsi = list(rsi)
-    return np.array(rsi)
-
-
 # 同花顺和通达信等软件中的MACD
 def MACD_CN(close, fastperiod, slowperiod, signalperiod):
     macdDIFF, macdDEA, macd = tl.MACDEXT(close, fastperiod=fastperiod, fastmatype=1, slowperiod=slowperiod,
