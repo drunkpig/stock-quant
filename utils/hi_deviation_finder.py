@@ -1,6 +1,4 @@
 import logging
-from functools import reduce
-import numpy as np
 from utils.line_process import find_hi_point
 
 logger = logging.getLogger()
@@ -64,6 +62,9 @@ class HiDeviationFinder(object):
                         i_r - i_l - 1, self.__hi_price_2_point_distance,self.__dt[i_l], price_l, rsi_l, i_l, self.__dt[i_r], price_r, rsi_r, i_r))
                     #return False
                 else:
+                    logger.info("背离发生>> (%s, %s, %s, %s), (%s,%s, %s, %s)" % (
+                        self.__dt[i_l], price_l, rsi_l, i_l,
+                        self.__dt[i_r], price_r, rsi_r, i_r))
                     return True
             elif not is_price_ok:
                 logger.debug("价格不满足>> (%s, %s, %s, %s), (%s,%s, %s, %s)" % (
