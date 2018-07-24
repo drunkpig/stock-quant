@@ -92,7 +92,7 @@ def __optz_hi_eq_point(i_l, i_r, low_point_index_array, arr):
             return random.choice([i_r, i_l])
 
 
-def __optz_low_eq_point(i_l, i_r, hi_point_array):
+def __optz_low_eq_point(i_l, i_r, hi_point_index_array, arr):
     """
     返回最合适的低点的index
     距离两侧和中间最高点最远的低点最有效
@@ -103,7 +103,26 @@ def __optz_low_eq_point(i_l, i_r, hi_point_array):
     :param hi_point_array:
     :return:
     """
-    pass
+    l_i = __left_idx(i_l, hi_point_index_array)
+    r_i = __right_idx(i_r, hi_point_index_array)
+    mid_idx = __mid_idx(i_l, i_r, hi_point_index_array)
+    val_l = -1 if l_i is None else arr[l_i]
+    val_r = -1 if r_i is None else arr[r_i]
+    val_mid, mid_i = (-1, -1) if len(mid_idx) == 0 else reduce(
+        lambda x, y: (x[0], x[1]) if x[1] > y[1] else (y[0], y[1]),
+        zip(range(len(mid_idx)), mid_idx))
+    # 默认最坏情况下三个的值是相等的
+    if val_l > val_r and val_l > val_mid:  # 左侧最大，保留右侧低点
+        return i_r
+    elif val_r > val_l and val_r > val_mid:
+        return i_l
+    else:  # 中间最大的情况下还要比较这个最大的点距离左边还是右边最近
+        if mid_i - i_l < i_r - mid_i:
+            return i_r
+        elif mid_i - i_l > i_r - mid_i:
+            return i_l
+        else:  # 这个地方几乎不会出现
+            return random.choice([i_r, i_l])
 
 
 def find_hi_point(arr, valid_step):
