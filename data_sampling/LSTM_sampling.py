@@ -1,19 +1,3 @@
-"""
-算法使用长期RSI和短期RSI结合。
-买点确认：
-------------------------
-首先观察长期RSI是否到达底部阈值，如果到达则立马转入
-短期RSI进行观察，如果短期RSI到达阈值则检查
-1，大盘当天是否下跌超过阈值
-2，股票当天是否本次下跌超过阈值
-3，如果1、2都成立则放弃
-4，否则如果短期RSI达到买入阈值且低于短期均线阈值则进行金字塔买入
-
-卖点确认：
--------------------------
-短期 rsi值大于阈值
-"""
-
 # coding=utf-8
 from __future__ import print_function, absolute_import
 
@@ -34,7 +18,7 @@ logger = logging.getLogger()
 this_dir, this_file = os.path.split(__file__)
 
 cfg = ConfigParser()
-cfg.read('%s/ls_rsi.ini' % this_dir)
+cfg.read('%s/sampling.ini' % this_dir)
 my_symbols = str(cfg.get('default', 'my_symbols'))
 short_time_bar = str(cfg.get('default', 'short_time'))
 long_time_bar = str(cfg.get('default', 'long_time'))
@@ -88,15 +72,17 @@ def on_bar(context, bars):
             context.data(context.SYMBOLS, frquency, context.WINDOW, fields='high').values.reshape(context.WINDOW))
         lowest_price = np.array(
             context.data(context.SYMBOLS, frquency, context.WINDOW, fields='low').values.reshape(context.WINDOW))
+
         if context.long_rsi_compute is None:
             heigest_price_dt = np.array(
                 context.data(context.SYMBOLS, frquency, context.WINDOW, fields='eob').values.reshape(context.WINDOW))
             heigest_price_dt = list(map(lambda x: str(x), heigest_price_dt))
             sma_diff_gt0, sma_diff_abs, rsi = rsi_init(close_price_arr.values.reshape(context.WINDOW),
-                                                                   time_peroid=context.LONG_RSI_PERIOD)
+                                                       time_peroid=context.LONG_RSI_PERIOD)
             context.long_rsi_compute = Tsh_RSI(context.LONG_RSI_PERIOD, sma_diff_gt0, sma_diff_abs, rsi)
 
-            history_rsi = compute_history_rsi(close_price_arr.values.reshape(len(close_price_arr)), context.LONG_RSI_PERIOD)
+            history_rsi = compute_history_rsi(close_price_arr.values.reshape(len(close_price_arr)),
+                                              context.LONG_RSI_PERIOD)
             hi_deviation_finder = HiDeviationFinder(RISK_PERIOD, VALID_HI_PRICE_INTERVAL, PRICE_EQ_ENDURANCE,
                                                     RSI_EQ_ENDURANCE, EFFECTIVE_DEVIATION_DISTANCE,
                                                     HI_PRICE_2_POINT_DISTANCE)
@@ -118,7 +104,7 @@ def on_bar(context, bars):
         close_price_arr = context.data(context.SYMBOLS, frquency, context.WINDOW, fields='close')
         if context.short_rsi_compute is None:
             sma_diff_gt0, sma_diff_abs, rsi = rsi_init(close_price_arr.values.reshape(context.WINDOW),
-                                                                   time_peroid=context.SHORT_RSI_PERIOD)
+                                                       time_peroid=context.SHORT_RSI_PERIOD)
             context.short_rsi_compute = Tsh_RSI(context.SHORT_RSI_PERIOD, sma_diff_gt0, sma_diff_abs, rsi)
         else:
             close_price_2 = close_price_arr[-2:].values.reshape(2)
@@ -129,7 +115,7 @@ def on_bar(context, bars):
             d_1, result_1 = is_stock_index_down_much(STOCK_INDEX)
             d_2, result_2 = is_stock_down_much(my_symbols)
             if result_1 or result_2:
-                logger.info("大盘/个股跌幅过大，禁止交易(大盘: %s%%, %s: %s%%)"%(d_1, my_symbols, d_2))
+                logger.info("大盘/个股跌幅过大，禁止交易(大盘: %s%%, %s: %s%%)" % (d_1, my_symbols, d_2))
                 return
             else:
                 if rsi <= SHORT_RSI_BUY_THRESHOLD and context.watch_buy == True:  # 短期rsi小于阈值而且长周期发出买入信号

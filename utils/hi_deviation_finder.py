@@ -9,6 +9,7 @@ class HiDeviationFinder(object):
                  effective_deviation_distance, hi_price_2_point_distance):
         self.__cache_len = cache_len  # 保存多少个周期的数据
         self.__hi_price = []
+        self.__low_price = []
         self.__rsi = []
         self.__dt = []
         self.__effective_deviation_distance = effective_deviation_distance
@@ -17,27 +18,31 @@ class HiDeviationFinder(object):
         self.__rsi_equal_endurance = rsi_eq_endurance
         self.__hi_price_2_point_distance = hi_price_2_point_distance
 
-    def add(self, hi_price, rsi, date_str):
+    def add(self, hi_price, low_price, rsi, date_str):
 
-        lmin = min(len(hi_price), len(rsi), len(date_str))
+        lmin = min(len(hi_price), len(low_price), len(rsi), len(date_str))
         del hi_price[0:len(hi_price) - lmin]
+        del low_price[0:len(low_price) - lmin]
         del rsi[0:len(rsi) - lmin]
         del date_str[0:len(date_str) - lmin]
 
-        l = min(len(hi_price), len(rsi))
+        l = min(len(hi_price), len(low_price), len(rsi))  # 前面裁剪了长度，现在重新计算一下
 
         self.__hi_price += hi_price[-l:]
+        self.__low_price += low_price[-l:]
         self.__rsi += rsi[-l:]
-        self.__dt += date_str
+        self.__dt += date_str[-l:]
+
         len_delta = len(self.__hi_price) - self.__cache_len
         if len_delta > 0:
             del self.__hi_price[0:len_delta]
+            del self.__low_price[0:len_delta]
             del self.__rsi[0:len_delta]
             del self.__dt[0:len_delta]
 
     def is_hi_deviation(self, debug_flag=False):
         len_dt = len(self.__hi_price)
-        hi_points_index = find_hi_point(self.__hi_price, self.__valid_hi_price_interval)
+        hi_points_index = find_hi_point(self.__hi_price, self.__low_price, self.__valid_hi_price_interval)
 
         for i in reversed(range(0, len(hi_points_index))):
             i_l = hi_points_index[i - 1]
@@ -55,12 +60,14 @@ class HiDeviationFinder(object):
             if is_price_ok and is_rsi_ok:
                 if (len_dt - i_r) > self.__effective_deviation_distance:
                     logger.info("背离发生,但距离太远[%s>%s]>> (%s, %s, %s, %s), (%s,%s, %s, %s)" % (
-                        len_dt - i_r, self.__effective_deviation_distance, self.__dt[i_l], price_l, rsi_l, i_l, self.__dt[i_r], price_r, rsi_r, i_r))
+                        len_dt - i_r, self.__effective_deviation_distance, self.__dt[i_l], price_l, rsi_l, i_l,
+                        self.__dt[i_r], price_r, rsi_r, i_r))
                     return False
                 elif (i_r - i_l - 1) < self.__hi_price_2_point_distance:
                     logger.info("背离发生，但两点距离太近[%s<%s]>> (%s, %s, %s, %s), (%s,%s, %s, %s)" % (
-                        i_r - i_l - 1, self.__hi_price_2_point_distance,self.__dt[i_l], price_l, rsi_l, i_l, self.__dt[i_r], price_r, rsi_r, i_r))
-                    #return False
+                        i_r - i_l - 1, self.__hi_price_2_point_distance, self.__dt[i_l], price_l, rsi_l, i_l,
+                        self.__dt[i_r], price_r, rsi_r, i_r))
+                    # return False
                 else:
                     logger.info("背离发生>> (%s, %s, %s, %s), (%s,%s, %s, %s)" % (
                         self.__dt[i_l], price_l, rsi_l, i_l,
@@ -69,11 +76,11 @@ class HiDeviationFinder(object):
             elif not is_price_ok:
                 logger.debug("价格不满足>> (%s, %s, %s, %s), (%s,%s, %s, %s)" % (
                     self.__dt[i_l], price_l, rsi_l, i_l, self.__dt[i_r], price_r, rsi_r, i_r))
-                #return False
+                # return False
             elif not is_rsi_ok:
                 logger.debug("RSI没有背离>> (%s, %s, %s, %s), (%s,%s, %s, %s)" % (
                     self.__dt[i_l], price_l, rsi_l, i_l, self.__dt[i_r], price_r, rsi_r, i_r))
-                #return False
+                # return False
 
         return False
 
@@ -108,4 +115,4 @@ class HiDeviationFinder(object):
     def __watch(self, arr):
         for i in range(len(arr)):
             index = arr[i]
-            logger.info("%s\t%s\t%s\t%s"%(self.__dt[index], self.__hi_price[index], self.__rsi[index],index))
+            logger.info("%s\t%s\t%s\t%s" % (self.__dt[index], self.__hi_price[index], self.__rsi[index], index))

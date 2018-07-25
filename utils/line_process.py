@@ -125,15 +125,15 @@ def __optz_low_eq_point(i_l, i_r, hi_point_index_array, arr):
             return random.choice([i_r, i_l])
 
 
-def find_hi_point(arr, valid_step):
+def find_hi_point(hi_arr, low_arr, valid_step):
     """
     找到峰顶的点
-    :param arr:
+    :param hi_arr:
     :param valid_step: 左侧和右侧必须要有多少个低于的值
     :return:
     """
     low_point_index = None
-    max_val_index = __get_hi_point(arr, valid_step)
+    max_val_index = __get_hi_point(hi_arr, valid_step)
 
     ret_index = []
     len_process = -1
@@ -144,14 +144,14 @@ def find_hi_point(arr, valid_step):
             i_r = max_val_index[i]
             i_l = max_val_index[i - 1]
             if i_r - i_l - 1 < valid_step * 2:
-                if arr[i_r] < arr[i_l]:  # 右侧比左侧小，说明右侧是下跌趋势里的反弹/反转小高峰，保留左侧高峰，但也很可能错过反弹/反转
+                if hi_arr[i_r] < hi_arr[i_l]:  # 右侧比左侧小，说明右侧是下跌趋势里的反弹/反转小高峰，保留左侧高峰，但也很可能错过反弹/反转
                     ret_index.append(i_l)
-                elif arr[i_r] > arr[i_l]:  # 右侧更大说明右侧是新高，保留无误, 但是这样去掉左侧可能导致背离判断不准确了
+                elif hi_arr[i_r] > hi_arr[i_l]:  # 右侧更大说明右侧是新高，保留无误, 但是这样去掉左侧可能导致背离判断不准确了
                     ret_index.append(i_r)
                 else:  # 值相等，虽然很少会发生，取距离最低点最远的高点
                     if low_point_index is None:
-                        low_point_index = __get_low_point(arr, valid_step)
-                    opt_i = __optz_hi_eq_point(i_l, i_r, low_point_index, arr)
+                        low_point_index = __get_low_point(low_arr, valid_step)
+                    opt_i = __optz_hi_eq_point(i_l, i_r, low_point_index, hi_arr)
                     ret_index.append(opt_i)
             else:
                 ret_index.append(i_l)
@@ -164,15 +164,15 @@ def find_hi_point(arr, valid_step):
     return max_val_index
 
 
-def find_low_point(arr, valid_step):
+def find_low_point(low_arr, hi_arr, valid_step):
     """
     找到峰谷的点
-    :param arr:
+    :param low_arr:
     :param valid_step:
     :return:
     """
     hi_point_index = None
-    min_val_index = __get_low_point(arr, valid_step)
+    min_val_index = __get_low_point(low_arr, valid_step)
     ret_index = []
     len_process = -1
     while len_process != len(ret_index):  # 迭代直到收敛
@@ -182,14 +182,14 @@ def find_low_point(arr, valid_step):
             i_r = min_val_index[i]
             i_l = min_val_index[i - 1]
             if i_r - i_l - 1 < valid_step * 2:  # 点间距不满足标准？
-                if arr[i_l] > arr[i_r]:  # 右侧的比左侧的小，说明价格越来越低了
+                if low_arr[i_l] > low_arr[i_r]:  # 右侧的比左侧的小，说明价格越来越低了
                     ret_index.append(i_r)
-                elif arr[i_l] < arr[i_r]:
+                elif low_arr[i_l] < low_arr[i_r]:
                     ret_index.append(i_l)
                 else:  # 这里还应该根据最高点综合判断
                     if hi_point_index is None:
-                        hi_point_index = __get_hi_point(arr, valid_step)
-                    opt_i = __optz_low_eq_point(i_l, i_r, hi_point_index, arr)
+                        hi_point_index = __get_hi_point(hi_arr, valid_step)
+                    opt_i = __optz_low_eq_point(i_l, i_r, hi_point_index, low_arr)
                     ret_index.append(opt_i)
             else:
                 ret_index.append(i_l)
