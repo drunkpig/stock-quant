@@ -3,12 +3,14 @@ from __future__ import print_function, absolute_import
 
 from logging.config import fileConfig
 
+import psycopg2
 from gm.api import *
 import os
 from configparser import ConfigParser
 import logging
 import numpy as np
 
+from utils.dt_tm import now_tm
 from utils.hi_deviation_finder import HiDeviationFinder
 from utils.rsi import rsi_init, compute_history_rsi
 from utils.tsh_rsi import Tsh_RSI
@@ -40,6 +42,47 @@ RSI_EQ_ENDURANCE = float(cfg.get("default", 'rsi_eq_endurance'))
 HI_PRICE_2_POINT_DISTANCE = int(cfg.get("default", 'hi_price_2_point_distance'))
 STOCK_INDEX = {"SH": "SHSE.000001", "SZ": "SZSE.399001"}.get(my_symbols[0:2])
 
+db = psycopg2.connect(database='lstm_sampling', user='postgres', password='',
+                      host='dev.jscrapy.org', port='5432')
+
+
+def init_db():
+    sql = """
+    create table if not exists stock_sampling(
+        id SERIAL  PRIMARY KEY ,
+        symbol VARCHAR(64) NOT NULL,
+        frequency VARCHAR(64) NOT NULL,
+        begin_of_bar VARCHAR(64) NOT NULL,
+        end_of_bar VARCHAR(64) NOT NULL,
+        open_price  float8 NOT NULL,
+        close_price  float8 NOT NULL,
+        low  float8 NOT NULL,
+        hi  float8 NOT NULL,
+        volume float8 NOT NULL,
+        amount float8 NOT NULL,
+        is_peak SMALLINT NOT NULL,
+        is_valley SMALLINT NOT NULL,
+        gmt_created TIMESTAMP NOT NULL DEFAULT (NOW()) 
+    );
+    ALTER DATABASE lstm_sampling SET timezone TO 'Asia/Shanghai';
+    """
+    cursor = db.cursor()
+    cursor.execute(sql)
+    db.commit()
+    cursor.close()
+    logger.info("创建数据库OK")
+
+
+def save_to_db(bar_info):
+    sql = """
+        INSERT INTO stock_sampling (symbol,frequency,begin_of_bar,end_of_bar, open_price,close_price,low,hi,volume,amount,is_peak,is_valley)
+        VALUES(%(symbol)s, %(frequency)s, %(begin_of_bar)s, %(end_of_bar)s, %(open_price)s, %(close_price)s, %(low)s, %(hi)s, %(volume)s, %(amount)s, %(is_peak)s, %(is_valley)s);
+    """
+    cursor = db.cursor()
+    cursor.execute(sql, bar_info)
+    db.commit()
+    cursor.close()
+
 
 def init(context):
     context.SYMBOLS = my_symbols
@@ -54,7 +97,7 @@ def init(context):
     context.watch_buy = False
     context.debug_data = False
 
-    subscribe(symbols=context.SYMBOLS, frequency=context.SHORT_FREQUENCY, count=context.WINDOW)
+    # subscribe(symbols=context.SYMBOLS, frequency=context.SHORT_FREQUENCY, count=context.WINDOW)
     subscribe(symbols=context.SYMBOLS, frequency=context.LONG_FREQUENCY, count=context.WINDOW)
 
 
@@ -65,79 +108,35 @@ def on_tick(context, tick):
 
 def on_bar(context, bars):
     # 打印当前获取的bar信息
-    frquency = bars[0]['frequency']
-    if frquency == context.LONG_FREQUENCY:
-        close_price_arr = context.data(context.SYMBOLS, frquency, context.WINDOW, fields='close')
-        heigest_price = np.array(
-            context.data(context.SYMBOLS, frquency, context.WINDOW, fields='high').values.reshape(context.WINDOW))
-        lowest_price = np.array(
-            context.data(context.SYMBOLS, frquency, context.WINDOW, fields='low').values.reshape(context.WINDOW))
 
-        if context.long_rsi_compute is None:
-            heigest_price_dt = np.array(
-                context.data(context.SYMBOLS, frquency, context.WINDOW, fields='eob').values.reshape(context.WINDOW))
-            heigest_price_dt = list(map(lambda x: str(x), heigest_price_dt))
-            sma_diff_gt0, sma_diff_abs, rsi = rsi_init(close_price_arr.values.reshape(context.WINDOW),
-                                                       time_peroid=context.LONG_RSI_PERIOD)
-            context.long_rsi_compute = Tsh_RSI(context.LONG_RSI_PERIOD, sma_diff_gt0, sma_diff_abs, rsi)
-
-            history_rsi = compute_history_rsi(close_price_arr.values.reshape(len(close_price_arr)),
-                                              context.LONG_RSI_PERIOD)
-            hi_deviation_finder = HiDeviationFinder(RISK_PERIOD, VALID_HI_PRICE_INTERVAL, PRICE_EQ_ENDURANCE,
-                                                    RSI_EQ_ENDURANCE, EFFECTIVE_DEVIATION_DISTANCE,
-                                                    HI_PRICE_2_POINT_DISTANCE)
-            hi_deviation_finder.add(heigest_price.tolist(), lowest_price.tolist(), history_rsi, heigest_price_dt)
-            context.hi_deviation_finder = hi_deviation_finder
-        else:
-            close_price_2 = close_price_arr[-2:].values.reshape(2)
-            heigest_price_1 = bars[0]['high']
-            low_price_l = bars[0]['low']
-            rsi = context.long_rsi_compute.ths_rsi(close_price_2)
-            trade_tm = str(bars[0]['eob'])
-            context.hi_deviation_finder.add([heigest_price_1], [low_price_l], [rsi], [trade_tm])
-            if rsi < LONG_RSI_BUY_THRESHOLD:
-                context.watch_buy = True
-            else:
-                context.watch_buy = False
-
-    elif frquency == context.SHORT_FREQUENCY:
-        close_price_arr = context.data(context.SYMBOLS, frquency, context.WINDOW, fields='close')
-        if context.short_rsi_compute is None:
-            sma_diff_gt0, sma_diff_abs, rsi = rsi_init(close_price_arr.values.reshape(context.WINDOW),
-                                                       time_peroid=context.SHORT_RSI_PERIOD)
-            context.short_rsi_compute = Tsh_RSI(context.SHORT_RSI_PERIOD, sma_diff_gt0, sma_diff_abs, rsi)
-        else:
-            close_price_2 = close_price_arr[-2:].values.reshape(2)
-            rsi = context.short_rsi_compute.ths_rsi(close_price_2)
-            ma_price = round(np.mean(close_price_arr[-MA_PRICE_PERIOD:].values.reshape(MA_PRICE_PERIOD)), 2)
-            close_price = round(close_price_2[1], 2)
-
-            d_1, result_1 = is_stock_index_down_much(STOCK_INDEX)
-            d_2, result_2 = is_stock_down_much(my_symbols)
-            if result_1 or result_2:
-                logger.info("大盘/个股跌幅过大，禁止交易(大盘: %s%%, %s: %s%%)" % (d_1, my_symbols, d_2))
-                return
-            else:
-                if rsi <= SHORT_RSI_BUY_THRESHOLD and context.watch_buy == True:  # 短期rsi小于阈值而且长周期发出买入信号
-                    if close_price < ma_price * (1 - PRICE_MA_THRESHOLD):
-                        is_price_deviation = context.hi_deviation_finder.is_hi_deviation(context.debug_data)
-                        if not is_price_deviation:
-                            print("%s买入\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
-                        else:
-                            print("%sRSI背离拒绝买入\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
-                elif rsi > SHORT_RSI_SELL_THRESHOLD:
-                    print("%s卖出\t%s\t%s\t%s" % (bars[0]['eob'], close_price, ma_price, rsi))
+    bar_info = {
+        'symbol': bars[0]['symbol'],
+        'frequency': bars[0]['frequency'],
+        'begin_of_bar': bars[0]['bob'].strftime('%Y-%m-%d %H:%M:%S'),
+        'end_of_bar': bars[0]['bob'].strftime('%Y-%m-%d %H:%M:%S'),
+        'open_price': bars[0]['open'],
+        'close_price': bars[0]['close'],
+        'low': bars[0]['low'],
+        'hi': bars[0]['high'],
+        'volume': bars[0]['volume'],
+        'amount': bars[0]['amount'],
+        'is_peak': 0,
+        'is_valley': 0,
+    }
+    save_to_db(bar_info)
 
 
 if __name__ == '__main__':
     print(__file__)
+    init_db()
+    now_dt = now_tm()
     fileConfig('../logging.ini')
     run(strategy_id='eceb04b5-8732-11e8-9ab6-68f72885d744',
         filename=this_file,
         mode=MODE_BACKTEST,
         token='5e18d749d600b7caa519c7caa4f09853aaa9deb2',
-        backtest_start_time='2018-06-01 09:30:00',
-        backtest_end_time='2018-07-19 15:00:00',
+        backtest_start_time='2016-1-1 09:30:00',
+        backtest_end_time=now_dt,
         backtest_adjust=ADJUST_NONE,
         backtest_initial_cash=100000,
         backtest_commission_ratio=0.0002,
