@@ -52,16 +52,18 @@ def init_db():
         id SERIAL  PRIMARY KEY ,
         symbol VARCHAR(64) NOT NULL,
         frequency VARCHAR(64) NOT NULL,
-        begin_of_bar VARCHAR(64) NOT NULL,
-        end_of_bar VARCHAR(64) NOT NULL,
+        begin_of_bar TIMESTAMP NOT NULL,
+        end_of_bar TIMESTAMP NOT NULL,
         open_price  float8 NOT NULL,
         close_price  float8 NOT NULL,
-        low  float8 NOT NULL,
-        hi  float8 NOT NULL,
+        low_price  float8 NOT NULL,
+        hi_price  float8 NOT NULL,
         volume float8 NOT NULL,
         amount float8 NOT NULL,
         is_peak SMALLINT NOT NULL,
         is_valley SMALLINT NOT NULL,
+        is_buy_point SMALLINT NOT NULL,
+        is_sell_point SMALLINT NOT NULL,
         gmt_created TIMESTAMP NOT NULL DEFAULT (NOW()) 
     );
     ALTER DATABASE lstm_sampling SET timezone TO 'Asia/Shanghai';
@@ -75,8 +77,9 @@ def init_db():
 
 def save_to_db(bar_info):
     sql = """
-        INSERT INTO stock_sampling (symbol,frequency,begin_of_bar,end_of_bar, open_price,close_price,low,hi,volume,amount,is_peak,is_valley)
-        VALUES(%(symbol)s, %(frequency)s, %(begin_of_bar)s, %(end_of_bar)s, %(open_price)s, %(close_price)s, %(low)s, %(hi)s, %(volume)s, %(amount)s, %(is_peak)s, %(is_valley)s);
+        INSERT INTO stock_sampling (symbol,frequency,begin_of_bar,end_of_bar, open_price,close_price,low_price,hi_price,volume,amount,is_peak,is_valley, is_buy_point, is_sell_point)
+        VALUES(%(symbol)s, %(frequency)s, to_timestamp(%(begin_of_bar)s,'yyyy-MM-dd hh24:mi:ss'), to_timestamp(%(end_of_bar)s,'yyyy-MM-dd hh24:mi:ss'), %(open_price)s, 
+        %(close_price)s, %(low_price)s, %(hi_price)s, %(volume)s, %(amount)s, %(is_peak)s, %(is_valley)s, %(is_buy_point)s, %(is_sell_point)s);
     """
     cursor = db.cursor()
     cursor.execute(sql, bar_info)
@@ -86,18 +89,15 @@ def save_to_db(bar_info):
 
 def init(context):
     context.SYMBOLS = my_symbols
-    context.SHORT_RSI_PERIOD = short_rsi_peroid
+    #context.SHORT_RSI_PERIOD = short_rsi_peroid
     context.LONG_RSI_PERIOD = long_rsi_period
-    context.SHORT_FREQUENCY = short_time_bar
+    #context.SHORT_FREQUENCY = short_time_bar
     context.LONG_FREQUENCY = long_time_bar
     context.WINDOW = data_window
     context.long_rsi_compute = None
-    context.short_rsi_compute = None
-    context.risk_rsi_compute = None  # 使用长周期作为风控
-    context.watch_buy = False
-    context.debug_data = False
+    #context.short_rsi_compute = None
+    #context.risk_rsi_compute = None  # 使用长周期作为风控
 
-    # subscribe(symbols=context.SYMBOLS, frequency=context.SHORT_FREQUENCY, count=context.WINDOW)
     subscribe(symbols=context.SYMBOLS, frequency=context.LONG_FREQUENCY, count=context.WINDOW)
 
 
@@ -113,18 +113,20 @@ def on_bar(context, bars):
         'symbol': bars[0]['symbol'],
         'frequency': bars[0]['frequency'],
         'begin_of_bar': bars[0]['bob'].strftime('%Y-%m-%d %H:%M:%S'),
-        'end_of_bar': bars[0]['bob'].strftime('%Y-%m-%d %H:%M:%S'),
+        'end_of_bar': bars[0]['eob'].strftime('%Y-%m-%d %H:%M:%S'),
         'open_price': bars[0]['open'],
         'close_price': bars[0]['close'],
-        'low': bars[0]['low'],
-        'hi': bars[0]['high'],
+        'low_price': bars[0]['low'],
+        'hi_price': bars[0]['high'],
         'volume': bars[0]['volume'],
         'amount': bars[0]['amount'],
         'is_peak': 0,
         'is_valley': 0,
+        'is_buy_point': 0,
+        'is_sell_point': 0,
     }
-    save_to_db(bar_info)
 
+    save_to_db(bar_info)
 
 if __name__ == '__main__':
     print(__file__)

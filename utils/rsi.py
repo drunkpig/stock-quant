@@ -1,5 +1,7 @@
 from functools import reduce
 
+from utils.ma import ths_SMA
+
 
 def rsi_init(close_price_arr, time_peroid):
     """
@@ -39,13 +41,17 @@ def compute_history_rsi(close_price_arr, time_period):
                                diff_gt0[0])
     init_sma_diff_abs = reduce(lambda x, y: ((time_period - 1) * x + 1 * y) / time_period, diff_abs[0:time_period],
                                diff_abs[0])
-    del diff_gt0[0:time_period - 1]
-    del diff_abs[0:time_period - 1]
+    # del diff_gt0[0:time_period]
+    # del diff_abs[0:time_period]
+    # diff_gt0 = [init_sma_diff_gt0] + diff_gt0
+    # diff_abs = [init_sma_diff_abs] + diff_abs
 
     for i in range(0, len(diff_gt0)):
         sma_diff_gt0 = ((time_period - 1) * init_sma_diff_gt0 + 1 * diff_gt0[i]) / time_period
         sma_diff_abs = ((time_period - 1) * init_sma_diff_abs + 1 * diff_abs[i]) / time_period
         sma_rsi = (sma_diff_gt0 / sma_diff_abs) * 100
         history_rsi.append(sma_rsi)
+        init_sma_diff_gt0 = sma_diff_gt0
+        init_sma_diff_abs = sma_diff_abs
 
     return history_rsi

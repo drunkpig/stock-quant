@@ -66,7 +66,7 @@ def init(context):
     context.WINDOW = data_window
     context.long_rsi_compute = None
     context.short_rsi_compute = None
-    context.risk_rsi_compute = None  # 使用长周期作为风控
+    #context.risk_rsi_compute = None  # 使用长周期作为风控
     context.watch_buy = False
     context.debug_data = False
 
