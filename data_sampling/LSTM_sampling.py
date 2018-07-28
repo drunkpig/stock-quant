@@ -62,8 +62,7 @@ def init_db():
         amount float8 NOT NULL,
         is_peak SMALLINT NOT NULL,
         is_valley SMALLINT NOT NULL,
-        is_buy_point SMALLINT NOT NULL,
-        is_sell_point SMALLINT NOT NULL,
+        y SMALLINT NOT NULL,
         gmt_created TIMESTAMP NOT NULL DEFAULT (NOW()) 
     );
     ALTER DATABASE lstm_sampling SET timezone TO 'Asia/Shanghai';
@@ -77,9 +76,9 @@ def init_db():
 
 def save_to_db(bar_info):
     sql = """
-        INSERT INTO stock_sampling (symbol,frequency,begin_of_bar,end_of_bar, open_price,close_price,low_price,hi_price,volume,amount,is_peak,is_valley, is_buy_point, is_sell_point)
+        INSERT INTO stock_sampling (symbol,frequency,begin_of_bar,end_of_bar, open_price,close_price,low_price,hi_price,volume,amount,is_peak,is_valley, y)
         VALUES(%(symbol)s, %(frequency)s, to_timestamp(%(begin_of_bar)s,'yyyy-MM-dd hh24:mi:ss'), to_timestamp(%(end_of_bar)s,'yyyy-MM-dd hh24:mi:ss'), %(open_price)s, 
-        %(close_price)s, %(low_price)s, %(hi_price)s, %(volume)s, %(amount)s, %(is_peak)s, %(is_valley)s, %(is_buy_point)s, %(is_sell_point)s);
+        %(close_price)s, %(low_price)s, %(hi_price)s, %(volume)s, %(amount)s, %(is_peak)s, %(is_valley)s, %(y)s);
     """
     cursor = db.cursor()
     cursor.execute(sql, bar_info)
@@ -122,8 +121,7 @@ def on_bar(context, bars):
         'amount': bars[0]['amount'],
         'is_peak': 0,
         'is_valley': 0,
-        'is_buy_point': 0,
-        'is_sell_point': 0,
+        'y':0
     }
 
     save_to_db(bar_info)
@@ -139,7 +137,7 @@ if __name__ == '__main__':
         token='5e18d749d600b7caa519c7caa4f09853aaa9deb2',
         backtest_start_time='2016-1-1 09:30:00',
         backtest_end_time=now_dt,
-        backtest_adjust=ADJUST_NONE,
+        backtest_adjust=ADJUST_PREV,
         backtest_initial_cash=100000,
         backtest_commission_ratio=0.0002,
         backtest_slippage_ratio=0.0001,

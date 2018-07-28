@@ -3,8 +3,11 @@ from functools import reduce
 from utils.array import array_max, array_min
 import random
 
+LOW_RSI = 35
+HI_RSI = 75
 
-def __get_hi_point(arr, valid_step):
+
+def __get_hi_point(arr, valid_step, rsi=None):
     max_val_index = []
     for i in range(0, len(arr)):
         val = arr[i]
@@ -16,10 +19,12 @@ def __get_hi_point(arr, valid_step):
             max_val_index.append(i)
             i = after_end
 
-    return max_val_index
+    ret = list(filter(lambda x: True if rsi[x] > HI_RSI else False, max_val_index))
+
+    return ret
 
 
-def __get_low_point(arr, valid_step):
+def __get_low_point(arr, valid_step, rsi=None):
     min_val_index = []
     for i in range(0, len(arr)):
         val = arr[i]
@@ -31,7 +36,8 @@ def __get_low_point(arr, valid_step):
             min_val_index.append(i)
             i = after_end
 
-    return min_val_index
+    ret = list(filter(lambda x: True if rsi[x] < LOW_RSI else False, min_val_index))
+    return ret
 
 
 def __left_idx(i, index_arr):
@@ -125,7 +131,7 @@ def __optz_low_eq_point(i_l, i_r, hi_point_index_array, arr):
             return random.choice([i_r, i_l])
 
 
-def find_hi_point(hi_arr, low_arr, valid_step):
+def find_hi_point(hi_arr, low_arr, valid_step, rsi=None):
     """
     找到峰顶的点
     :param hi_arr:
@@ -133,7 +139,7 @@ def find_hi_point(hi_arr, low_arr, valid_step):
     :return:
     """
     low_point_index = None
-    max_val_index = __get_hi_point(hi_arr, valid_step)
+    max_val_index = __get_hi_point(hi_arr, valid_step, rsi)
 
     ret_index = []
     len_process = -1
@@ -150,7 +156,7 @@ def find_hi_point(hi_arr, low_arr, valid_step):
                     ret_index.append(i_r)
                 else:  # 值相等，虽然很少会发生，取距离最低点最远的高点
                     if low_point_index is None:
-                        low_point_index = __get_low_point(low_arr, valid_step)
+                        low_point_index = __get_low_point(low_arr, valid_step, rsi)
                     opt_i = __optz_hi_eq_point(i_l, i_r, low_point_index, hi_arr)
                     ret_index.append(opt_i)
             else:
@@ -163,8 +169,14 @@ def find_hi_point(hi_arr, low_arr, valid_step):
 
     return max_val_index
 
+def __get_rsi(rsi, inx):
+    rsi_arr = []
+    for i in inx:
+        rsi_arr.append(rsi[i])
 
-def find_low_point(low_arr, hi_arr, valid_step):
+    return rsi_arr
+
+def find_low_point(low_arr, hi_arr, valid_step, rsi=None):
     """
     找到峰谷的点
     :param low_arr:
@@ -172,7 +184,10 @@ def find_low_point(low_arr, hi_arr, valid_step):
     :return:
     """
     hi_point_index = None
-    min_val_index = __get_low_point(low_arr, valid_step)
+    min_val_index = __get_low_point(low_arr, valid_step, rsi)
+
+    tt = __get_rsi(rsi, min_val_index)
+
     ret_index = []
     len_process = -1
     while len_process != len(ret_index):  # 迭代直到收敛
@@ -188,7 +203,7 @@ def find_low_point(low_arr, hi_arr, valid_step):
                     ret_index.append(i_l)
                 else:  # 这里还应该根据最高点综合判断
                     if hi_point_index is None:
-                        hi_point_index = __get_hi_point(hi_arr, valid_step)
+                        hi_point_index = __get_hi_point(hi_arr, valid_step, rsi)
                     opt_i = __optz_low_eq_point(i_l, i_r, hi_point_index, low_arr)
                     ret_index.append(opt_i)
             else:
@@ -197,7 +212,9 @@ def find_low_point(low_arr, hi_arr, valid_step):
                     ret_index.append(i_r)
 
         ret_index = reduce(lambda x, y: x if y in x else x + [y], ret_index, [])  # 去重
+        tt = __get_rsi(rsi, ret_index)
         min_val_index = ret_index.copy()
+
 
     return min_val_index
 
