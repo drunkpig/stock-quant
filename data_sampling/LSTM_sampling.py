@@ -8,14 +8,8 @@ from gm.api import *
 import os
 from configparser import ConfigParser
 import logging
-import numpy as np
 
 from utils.dt_tm import now_tm
-from utils.hi_deviation_finder import HiDeviationFinder
-from utils.rsi import rsi_init, compute_history_rsi
-from utils.tsh_rsi import Tsh_RSI
-from utils.__utils import is_stock_index_down_much, is_stock_down_much
-
 logger = logging.getLogger()
 this_dir, this_file = os.path.split(__file__)
 
@@ -27,7 +21,7 @@ long_time_bar = str(cfg.get('default', 'long_time'))
 short_rsi_peroid = int(cfg.get('default', 'short_rsi_period'))
 long_rsi_period = int(cfg.get("default", 'long_rsi_period'))
 data_window = int(cfg.get("default", 'data_window'))
-
+is_dry_run = cfg.getboolean("default", 'is_dry_run')
 LONG_RSI_BUY_THRESHOLD = int(cfg.get("default", 'long_rsi_buy_threshold'))
 SHORT_RSI_BUY_THRESHOLD = int(cfg.get("default", 'short_rsi_buy_threshold'))
 SHORT_RSI_SELL_THRESHOLD = int(cfg.get("default", 'short_rsi_sell_threshold'))
@@ -75,6 +69,7 @@ def init_db():
 
 
 def save_to_db(bar_info):
+    pass
     sql = """
         INSERT INTO stock_sampling (symbol,frequency,begin_of_bar,end_of_bar, open_price,close_price,low_price,hi_price,volume,amount,is_peak,is_valley, y)
         VALUES(%(symbol)s, %(frequency)s, to_timestamp(%(begin_of_bar)s,'yyyy-MM-dd hh24:mi:ss'), to_timestamp(%(end_of_bar)s,'yyyy-MM-dd hh24:mi:ss'), %(open_price)s, 
@@ -88,16 +83,20 @@ def save_to_db(bar_info):
 
 def init(context):
     context.SYMBOLS = my_symbols
-    #context.SHORT_RSI_PERIOD = short_rsi_peroid
     context.LONG_RSI_PERIOD = long_rsi_period
-    #context.SHORT_FREQUENCY = short_time_bar
     context.LONG_FREQUENCY = long_time_bar
     context.WINDOW = data_window
     context.long_rsi_compute = None
-    #context.short_rsi_compute = None
-    #context.risk_rsi_compute = None  # 使用长周期作为风控
 
-    subscribe(symbols=context.SYMBOLS, frequency=context.LONG_FREQUENCY, count=context.WINDOW)
+    symbols = get_constituents(context.SYMBOLS)
+    subscribe(symbols=symbols, frequency=context.LONG_FREQUENCY, count=context.WINDOW)
+
+    # for syb in symbols:
+    #     now_ = now_tm()
+    #     all_data = history(syb, frequency=context.LONG_FREQUENCY, start_time='2016-1-1 09:30:00', end_time=now_, skip_suspended=True,
+    #         fill_missing=None, adjust=ADJUST_PREV, adjust_end_time=now_, df=False)
+    #     pass
+
 
 
 def on_tick(context, tick):
@@ -121,10 +120,12 @@ def on_bar(context, bars):
         'amount': bars[0]['amount'],
         'is_peak': 0,
         'is_valley': 0,
-        'y':0
+        'y': 0
     }
 
-    save_to_db(bar_info)
+    if not is_dry_run:
+        save_to_db(bar_info)
+
 
 if __name__ == '__main__':
     print(__file__)

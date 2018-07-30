@@ -50,7 +50,8 @@ def get_stock_bar(stock_code):
     cursor.close()
     if row is not None:
         for r in row:
-            bars.append({"open_price": r[0], "close_price": r[1], "low_price": r[2], "hi_price": r[3], "ts": r[4], "id":r[5]})
+            bars.append(
+                {"open_price": r[0], "close_price": r[1], "low_price": r[2], "hi_price": r[3], "ts": r[4], "id": r[5]})
 
     return bars
 
@@ -100,10 +101,11 @@ def __print_deviation_point(point, date_arr, history_rsi, close_price):
         rsi = history_rsi[i]
         print("%s\t%s\t%s" % (dt, close_p, rsi))
 
+
 def __update(id, field, value):
     sql = """
         update stock_sampling set %s=%s where id = %s
-    """%(field, value, id)
+    """ % (field, value, id)
     cursor = db.cursor()
     cursor.execute(sql)
     cursor.close()
@@ -123,7 +125,7 @@ def scan(symbol):
     low_price = list(map(lambda x: x['low_price'], bars_info))
     hi_price = list(map(lambda x: x['hi_price'], bars_info))
     date_arr = list(map(lambda x: x['ts'], bars_info))
-    ids = list(map(lambda x:x['id'], bars_info))
+    ids = list(map(lambda x: x['id'], bars_info))
 
     history_rsi = [50] + compute_history_rsi(close_price, long_rsi_period)
     hi_point = find_hi_point(hi_price, low_price, VALID_HI_PRICE_INTERVAL, history_rsi)
@@ -142,10 +144,9 @@ def scan(symbol):
                                                PRICE_EQ_ENDURANCE,
                                                RSI_EQ_ENDURANCE, date_arr)
 
+    # __print_deviation_point(hi_deviation_point, date_arr, history_rsi, close_price)
 
-    #__print_deviation_point(hi_deviation_point, date_arr, history_rsi, close_price)
-
-    #__print_deviation_point(low_deviation_point, date_arr, history_rsi, close_price)
+    # __print_deviation_point(low_deviation_point, date_arr, history_rsi, close_price)
 
     for i in hi_point:
         id = ids[i]
@@ -164,5 +165,24 @@ def scan(symbol):
         __update(id, 'y', -1)
 
 
+def __get_symbols():
+    sql = """
+    select symbol from stock_sampling group by symbol
+    """
+    cursor = db.cursor()
+    cursor.execute(sql)
+    row = cursor.fetchall()
+    cursor.close()
+
+    symbols = []
+    for r in row:
+        symbols.append(r[0])
+
+    return symbols
+
+
 if __name__ == "__main__":
-    scan("SHSE.600125")
+    stock_symbols = __get_symbols()
+    for symb in stock_symbols:
+        scan(symb)
+        print("process %s ok" % symb)
