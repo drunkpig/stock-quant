@@ -42,6 +42,12 @@ def __is_rsi_hi_deviation(rsi_l, rsi_r, rsi_equal_endurance):
 
 
 def __is_rsi_low_deviation(rsi_l, rsi_r, rsi_eq_endurance):
+    if rsi_r==0: #防止除0异常
+        return False
+    elif rsi_l==0 and rsi_r>0:
+        return True
+
+
     delta = abs(rsi_l - rsi_r) / min(rsi_l, rsi_r)
     if delta < rsi_eq_endurance:
         return True

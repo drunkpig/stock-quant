@@ -40,7 +40,7 @@ def compute_history_rsi(close_price_arr, time_period):
     init_sma_diff_gt0 = reduce(lambda x, y: ((time_period - 1) * x + 1 * y) / time_period, diff_gt0[0:time_period],
                                diff_gt0[0])
     init_sma_diff_abs = reduce(lambda x, y: ((time_period - 1) * x + 1 * y) / time_period, diff_abs[0:time_period],
-                               diff_abs[0])
+                               max(0.00001, diff_abs[0])) #避免diff_abs为0
     # del diff_gt0[0:time_period]
     # del diff_abs[0:time_period]
     # diff_gt0 = [init_sma_diff_gt0] + diff_gt0
