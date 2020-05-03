@@ -100,7 +100,7 @@ def init(context):
 
 
 def on_tick(context, tick):
-    logger.error("不该运行到此处，调用的bar数据而非tick数据")
+    logger.error("不该运行到此处，调用的bar数据而非tick数据")short_time_bar
     exit(1)
 
 
